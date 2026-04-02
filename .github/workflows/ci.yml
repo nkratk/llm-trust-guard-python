@@ -78,42 +78,5 @@ jobs:
       - name: Run security audit
         run: pip-audit || true
 
-  publish:
-    needs: [test, lint]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install build tools
-        run: pip install build twine
-
-      - name: Check if version changed
-        id: version_check
-        run: |
-          PUBLISHED_VERSION=$(pip index versions llm-trust-guard 2>/dev/null | grep -oP '(?<=llm-trust-guard \()[\d.]+' | head -1 || echo "0.0.0")
-          CURRENT_VERSION=$(python -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); print(d['project']['version'])" 2>/dev/null || python -c "import tomli; f=open('pyproject.toml','rb'); d=tomli.load(f); print(d['project']['version'])" 2>/dev/null || grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)
-          echo "Published: $PUBLISHED_VERSION  Current: $CURRENT_VERSION"
-          if [ "$PUBLISHED_VERSION" != "$CURRENT_VERSION" ]; then
-            echo "should_publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_publish=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build package
-        if: steps.version_check.outputs.should_publish == 'true'
-        run: python -m build
-
-      - name: Publish to PyPI
-        if: steps.version_check.outputs.should_publish == 'true'
-        run: twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+  # Publishing is handled by release.yml (triggered on GitHub Release)
+  # Uses PyPI Trusted Publishing (OIDC) — no token required
