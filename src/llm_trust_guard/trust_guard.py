@@ -31,7 +31,6 @@ from llm_trust_guard.guards.input_sanitizer import InputSanitizer
 from llm_trust_guard.guards.encoding_detector import EncodingDetector
 from llm_trust_guard.guards.compression_detector import CompressionDetector
 from llm_trust_guard.guards.heuristic_analyzer import HeuristicAnalyzer
-from llm_trust_guard.guards.prompt_leakage_guard import PromptLeakageGuard
 from llm_trust_guard.guards.conversation_guard import ConversationGuard
 from llm_trust_guard.guards.context_budget_guard import ContextBudgetGuard
 from llm_trust_guard.guards.multimodal_guard import MultiModalGuard
@@ -54,8 +53,10 @@ from llm_trust_guard.guards.autonomy_escalation_guard import AutonomyEscalationG
 from llm_trust_guard.guards.mcp_security_guard import MCPSecurityGuard
 from llm_trust_guard.guards.code_execution_guard import CodeExecutionGuard
 
-from llm_trust_guard.guards.memory_guard import MemoryGuard
-from llm_trust_guard.guards.rag_guard import RAGGuard
+from llm_trust_guard.guards.memory_guard import MemoryGuard, MemoryGuardConfig
+from llm_trust_guard.guards.rag_guard import RAGGuard, RAGGuardConfig
+from llm_trust_guard.guards.drift_detector import DriftDetector, DriftDetectorConfig
+from llm_trust_guard.guards.prompt_leakage_guard import PromptLeakageGuard, PromptLeakageGuardConfig
 from llm_trust_guard.guards.state_persistence_guard import StatePersistenceGuard
 
 from llm_trust_guard.guards.external_data_guard import ExternalDataGuard
@@ -63,7 +64,6 @@ from llm_trust_guard.guards.agent_skill_guard import AgentSkillGuard
 from llm_trust_guard.guards.session_integrity_guard import SessionIntegrityGuard
 
 from llm_trust_guard.guards.circuit_breaker import CircuitBreaker
-from llm_trust_guard.guards.drift_detector import DriftDetector
 
 # ---------------------------------------------------------------------------
 # Type definitions
@@ -76,6 +76,51 @@ BlockLayer = Literal[
 ]
 
 FailMode = Literal["open", "closed"]
+
+#: Sensitivity mode for threshold-based guards.
+#:
+#: - ``strict``     — lower thresholds, catches more attacks, higher false positive rate
+#: - ``balanced``   — default thresholds (no behaviour change vs current defaults)
+#: - ``permissive`` — higher thresholds, fewer false positives, may miss borderline attacks
+#:
+#: Apply globally via ``TrustGuard({"sensitivity": "permissive"})``.
+#: Per-guard explicit threshold values always override the sensitivity mode.
+SensitivityMode = Literal["strict", "balanced", "permissive"]
+
+# Concrete threshold values per sensitivity mode.
+# balanced == current defaults (guaranteed backwards-compatible).
+_SENSITIVITY_PRESETS: Dict[str, Dict[str, Any]] = {
+    # sanitizer_threshold     : float 0-1  (InputSanitizer — lower = more sensitive)
+    # compression_threshold   : float 0-1  (CompressionDetector NCD — higher = more sensitive)
+    # memory_risk_threshold   : int   0-100 (MemoryGuard — lower = more sensitive)
+    # rag_min_trust_score     : int   0-100 (RAGGuard — higher = more sensitive)
+    # drift_anomaly_threshold : float Z-score (DriftDetector — lower = more sensitive)
+    # prompt_leakage_risk_threshold: int 0-100 (PromptLeakageGuard — lower = more sensitive)
+    "strict": {
+        "sanitizer_threshold": 0.15,
+        "compression_threshold": 0.60,
+        "memory_risk_threshold": 20,
+        "rag_min_trust_score": 60,
+        "drift_anomaly_threshold": 1.5,
+        "prompt_leakage_risk_threshold": 15,
+    },
+    "balanced": {
+        "sanitizer_threshold": 0.3,
+        "compression_threshold": 0.55,
+        "memory_risk_threshold": 40,
+        "rag_min_trust_score": 30,
+        "drift_anomaly_threshold": 2.5,
+        "prompt_leakage_risk_threshold": 25,
+    },
+    "permissive": {
+        "sanitizer_threshold": 0.5,
+        "compression_threshold": 0.45,
+        "memory_risk_threshold": 60,
+        "rag_min_trust_score": 15,
+        "drift_anomaly_threshold": 3.5,
+        "prompt_leakage_risk_threshold": 40,
+    },
+}
 
 
 @dataclass
@@ -186,6 +231,9 @@ class GuardMetrics:
 #   agent_skill      — dict  (enabled)
 #   session_integrity — dict (enabled)
 #
+#   sensitivity      — "strict" | "balanced" | "permissive" (default "balanced")
+#                       Cascades to all threshold-based guards. Per-guard explicit
+#                       values override this. See SensitivityMode for details.
 #   classifier       — async callable(input, context) -> result
 #   max_input_length — int (default 100_000)
 #   fail_mode        — "open" | "closed" (default "closed")
@@ -294,6 +342,10 @@ class TrustGuard:
         # Guard logger passthrough (some guards accept a logger kwarg)
         guard_logger = config.get("logger")
 
+        # Resolve sensitivity preset (per-guard explicit values always win)
+        _mode: str = config.get("sensitivity", "balanced")
+        _preset = _SENSITIVITY_PRESETS.get(_mode, _SENSITIVITY_PRESETS["balanced"])
+
         # ----------------------------------------------------------------
         # Initialise guards — original layers
         # ----------------------------------------------------------------
@@ -301,7 +353,7 @@ class TrustGuard:
         self._sanitizer: Optional[InputSanitizer] = None
         if _enabled(san_cfg) or "sanitizer" not in config:
             self._sanitizer = InputSanitizer(
-                threshold=san_cfg.get("threshold", 0.3),
+                threshold=san_cfg.get("threshold", _preset["sanitizer_threshold"]),
                 logger=guard_logger,
             )
 
@@ -370,9 +422,19 @@ class TrustGuard:
         if _enabled(config.get("multimodal")):
             self._multimodal = MultiModalGuard()
         if _enabled(config.get("memory")):
-            self._memory_guard = MemoryGuard()
+            mem_cfg = config.get("memory") or {}
+            self._memory_guard = MemoryGuard(
+                MemoryGuardConfig(
+                    risk_threshold=mem_cfg.get("risk_threshold", _preset["memory_risk_threshold"]),
+                )
+            )
         if _enabled(config.get("rag")):
-            self._rag_guard = RAGGuard()
+            rag_cfg = config.get("rag") or {}
+            self._rag_guard = RAGGuard(
+                RAGGuardConfig(
+                    min_trust_score=rag_cfg.get("min_trust_score", _preset["rag_min_trust_score"]),
+                )
+            )
         if _enabled(config.get("code_execution")):
             self._code_execution = CodeExecutionGuard()
         if _enabled(config.get("agent_communication")):
@@ -380,11 +442,21 @@ class TrustGuard:
         if _enabled(config.get("circuit_breaker")):
             self._circuit_breaker = CircuitBreaker()
         if _enabled(config.get("drift_detector")):
-            self._drift_detector = DriftDetector()
+            drift_cfg = config.get("drift_detector") or {}
+            self._drift_detector = DriftDetector(
+                DriftDetectorConfig(
+                    anomaly_threshold=drift_cfg.get("anomaly_threshold", _preset["drift_anomaly_threshold"]),
+                )
+            )
         if _enabled(config.get("mcp_security")):
             self._mcp_security = MCPSecurityGuard()
         if _enabled(config.get("prompt_leakage")):
-            self._prompt_leakage = PromptLeakageGuard()
+            pl_cfg = config.get("prompt_leakage") or {}
+            self._prompt_leakage = PromptLeakageGuard(
+                PromptLeakageGuardConfig(
+                    risk_threshold=pl_cfg.get("risk_threshold", _preset["prompt_leakage_risk_threshold"]),
+                )
+            )
         if _enabled(config.get("trust_exploitation")):
             self._trust_exploitation = TrustExploitationGuard()
         if _enabled(config.get("autonomy_escalation")):
@@ -413,7 +485,10 @@ class TrustGuard:
         if _enabled(config.get("heuristic")):
             self._heuristic = HeuristicAnalyzer()
         if _enabled(config.get("compression")):
-            self._compression = CompressionDetector()
+            comp_cfg = config.get("compression") or {}
+            self._compression = CompressionDetector(
+                threshold=comp_cfg.get("threshold", _preset["compression_threshold"]),
+            )
 
         # ----------------------------------------------------------------
         # Architectural guards (v4.13, opt-in)
