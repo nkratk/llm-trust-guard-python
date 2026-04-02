@@ -44,6 +44,9 @@ from llm_trust_guard.guards.state_persistence_guard import StatePersistenceGuard
 from llm_trust_guard.guards.external_data_guard import ExternalDataGuard, ExternalDataGuardResult, DataProvenance
 from llm_trust_guard.guards.agent_skill_guard import AgentSkillGuard, AgentSkillGuardResult, SkillDefinition, SkillThreat
 from llm_trust_guard.guards.session_integrity_guard import SessionIntegrityGuard, SessionIntegrityResult, SessionState
+from llm_trust_guard.guards.spawn_policy_guard import SpawnPolicyGuard, SpawnPolicyGuardConfig, SpawnRequest, SpawnPolicyResult
+from llm_trust_guard.guards.delegation_scope_guard import DelegationScopeGuard, DelegationScopeGuardConfig, DelegationRequest, DelegationScopeResult
+from llm_trust_guard.guards.trust_transitivity_guard import TrustTransitivityGuard, TrustTransitivityGuardConfig, AgentTrustEntry, TrustTransitivityResult
 
 # Infrastructure Guards
 from llm_trust_guard.guards.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerResult
@@ -98,6 +101,9 @@ __all__ = [
     "ExternalDataGuard", "ExternalDataGuardResult", "DataProvenance",
     "AgentSkillGuard", "AgentSkillGuardResult", "SkillDefinition", "SkillThreat",
     "SessionIntegrityGuard", "SessionIntegrityResult", "SessionState",
+    "SpawnPolicyGuard", "SpawnPolicyGuardConfig", "SpawnRequest", "SpawnPolicyResult",
+    "DelegationScopeGuard", "DelegationScopeGuardConfig", "DelegationRequest", "DelegationScopeResult",
+    "TrustTransitivityGuard", "TrustTransitivityGuardConfig", "AgentTrustEntry", "TrustTransitivityResult",
     # Infrastructure
     "CircuitBreaker", "CircuitBreakerConfig", "CircuitBreakerResult",
     "DriftDetector", "DriftDetectorResult",
