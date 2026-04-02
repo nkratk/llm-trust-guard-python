@@ -43,7 +43,7 @@ dev = ["pytest>=7.0", "pytest-cov"]
 packages = ["src/llm_trust_guard"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["tests/adversarial/datasets"]
+exclude = ["tests/adversarial"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
