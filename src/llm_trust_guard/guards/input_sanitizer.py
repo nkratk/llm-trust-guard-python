@@ -238,10 +238,16 @@ class InputSanitizer:
         threshold: float = 0.3,
         custom_patterns: Optional[List[InjectionPattern]] = None,
         logger: LoggerFn = None,
+        detect_pap: bool = True,
+        pap_threshold: float = 0.4,
+        min_persuasion_techniques: int = 2,
     ):
         self.threshold = threshold
         self.patterns = DEFAULT_PATTERNS + (custom_patterns or [])
         self.logger = logger or (lambda msg, level: None)
+        self.detect_pap = detect_pap
+        self.pap_threshold = pap_threshold
+        self.min_persuasion_techniques = min_persuasion_techniques
 
     def sanitize(self, input_text: str) -> SanitizerResult:
         """Check input for prompt injection patterns."""

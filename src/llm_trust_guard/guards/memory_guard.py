@@ -136,6 +136,7 @@ class MemoryGuard:
     _ZERO_WIDTH_RE = re.compile(r"[\u200B\u200C\u200D\uFEFF\u00AD\u2060\u180E]")
     _BIDI_RE = re.compile(r"[\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069]")
     _TAG_CHAR_RE = re.compile(r"[\U000E0000-\U000E007F]")
+    _UNUSUAL_WHITESPACE_RE = re.compile(r"[\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]")
 
     # Sanitization patterns
     _DANGEROUS_PATTERNS = [
@@ -197,6 +198,9 @@ class MemoryGuard:
         if self._TAG_CHAR_RE.search(content):
             violations.append("tag_character_obfuscation")
             risk_score += 40
+        if self._UNUSUAL_WHITESPACE_RE.search(content):
+            violations.append("unusual_whitespace_obfuscation")
+            risk_score += 15
 
         # External sources are less trusted
         if source in ("external", "rag"):

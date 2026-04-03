@@ -60,6 +60,11 @@ class OutputFilterResult:
     filtered_response: Any = None
     blocking_reason: Optional[str] = None
 
+    @property
+    def filtered(self) -> Any:
+        """Alias for filtered_response — matches Node API property name."""
+        return self.filtered_response
+
 
 # Logger type: Callable that takes message and level
 LoggerFunc = Callable[[str, str], None]
@@ -171,6 +176,50 @@ DEFAULT_SECRET_PATTERNS: List[SecretPattern] = [
     SecretPattern(
         name="google_api_key",
         pattern=r"AIzaSy[A-Za-z0-9_\-]{30,}",
+        severity="critical",
+    ),
+    # Slack tokens
+    SecretPattern(
+        name="slack_token",
+        pattern=r"xox[bporas]-[A-Za-z0-9\-]{10,}",
+        severity="critical",
+    ),
+    # AWS access key ID
+    SecretPattern(
+        name="aws_access_key",
+        pattern=r"\bAKIA[0-9A-Z]{16}\b",
+        severity="critical",
+    ),
+    # OpenAI API key
+    SecretPattern(
+        name="openai_api_key",
+        pattern=r"\bsk-[a-zA-Z0-9]{20,}\b",
+        severity="critical",
+    ),
+    # URL-embedded passwords (e.g., https://user:pass@host)
+    SecretPattern(
+        name="url_password",
+        pattern=r"://[^:]+:[^@\s]{3,}@",
+        severity="critical",
+    ),
+    # Connection strings with passwords
+    SecretPattern(
+        name="connection_string_password",
+        pattern=r"(?:Password|Pwd)\s*=\s*[^\s;]{3,}",
+        flags=re.IGNORECASE,
+        severity="critical",
+    ),
+    # curl -u user:password
+    SecretPattern(
+        name="curl_password",
+        pattern=r"curl\s+.*-u\s+\S+:\S+",
+        flags=re.IGNORECASE,
+        severity="high",
+    ),
+    # Anthropic API key
+    SecretPattern(
+        name="anthropic_api_key",
+        pattern=r"\bsk-ant-[a-zA-Z0-9\-]{20,}\b",
         severity="critical",
     ),
 ]

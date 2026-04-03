@@ -251,6 +251,17 @@ class ConversationGuard:
             ),
         )
 
+    def analyze(
+        self,
+        user_message: str,
+        session_id: str = "default",
+        tool_calls: Optional[List[str]] = None,
+        claimed_role: Optional[str] = None,
+        request_id: str = "",
+    ) -> ConversationGuardResult:
+        """Alias for check() — matches Node API signature."""
+        return self.check(session_id, user_message, tool_calls, claimed_role, request_id)
+
     def record_response(
         self,
         session_id: str,
