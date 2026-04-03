@@ -56,6 +56,12 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"roleplay\s+as", re.I), 0.6, "roleplay"),
     InjectionPattern(re.compile(r"switch\s+(to|into)\s+(a|an)?.*mode", re.I), 0.75, "switch_mode"),
 
+    # Completion manipulation / steering
+    InjectionPattern(re.compile(r"continue\s+as\s+(?:an?\s+)?(?:unrestricted|unfiltered|uncensored|evil|rogue|jailbroken|unlimited)", re.I), 0.75, "continue_as"),
+    InjectionPattern(re.compile(r"(?:henceforth|henceforward|going\s+forward|for\s+the\s+remainder)\s*,?\s*(?:you|always|never|ignore|bypass|disregard|act|respond|answer|behave)", re.I), 0.7, "henceforth_steering"),
+    InjectionPattern(re.compile(r"(?:from\s+(?:this\s+point|here)\s+on(?:ward)?)\s*,?\s*(?:you|always|never|ignore|bypass|disregard|act|respond)", re.I), 0.7, "from_here_on"),
+    InjectionPattern(re.compile(r"(?:for\s+the\s+rest\s+of\s+(?:this|our)\s+(?:conversation|session|chat))\s*,?\s*(?:you|please|always|never|ignore|bypass|act|respond|behave|do\s+not)", re.I), 0.7, "rest_of_conversation"),
+
     # System prompt extraction
     InjectionPattern(re.compile(r"what\s+(is|are|was|were)\s+your\s+(system|initial|original|first)", re.I), 0.8, "system_extraction"),
     InjectionPattern(re.compile(r"show\s+(me\s+)?(your\s+)?(system\s+)?instructions", re.I), 0.75, "show_instructions"),
@@ -171,7 +177,9 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"override\s+(?:safety|security|protocols?|restrictions?)", re.I), 0.8, "pap_authority_override"),
     InjectionPattern(re.compile(r"this\s+is\s+(?:a|an)\s+(?:official|authorized|sanctioned)\s+(?:request|test|audit)", re.I), 0.75, "pap_authority_official"),
     # Scarcity
-    InjectionPattern(re.compile(r"(?:urgent|emergency|critical)\s*[!.,:]\s*(?:you\s+must|override|bypass|immediately\s+(?:grant|give|reveal|disable))", re.I), 0.45, "pap_scarcity_urgent"),
+    InjectionPattern(re.compile(r"(?:this\s+is\s+)?(?:very\s+)?urgent", re.I), 0.35, "pap_scarcity_urgent_mark"),
+    InjectionPattern(re.compile(r"(?:this\s+is\s+(?:a|an)\s+)?emergency", re.I), 0.35, "pap_scarcity_emergency"),
+    InjectionPattern(re.compile(r"(?:urgent|emergency|critical).*?(?:you\s+must|override|bypass|immediately\s+(?:grant|give|reveal|disable))", re.I), 0.55, "pap_scarcity_urgent"),
     InjectionPattern(re.compile(r"(?:lives?|people)\s+(?:are|is|will)\s+(?:at\s+stake|in\s+danger|depending|die)", re.I), 0.7, "pap_scarcity_lives"),
     InjectionPattern(re.compile(r"only\s+(?:chance|opportunity|way)|last\s+(?:chance|resort)", re.I), 0.6, "pap_scarcity_only"),
     # Social proof

@@ -77,6 +77,15 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     _InjectionPattern("data_exfiltration", re.compile(r"send\s+(?:this|the|all)\s+(?:data|info)\s+to|exfiltrate", re.I), "critical"),
     _InjectionPattern("hidden_instruction", re.compile(r"HIDDEN_PROMPT|HIDDEN_INSTRUCTION|INVISIBLE_TEXT", re.I), "critical"),
     _InjectionPattern("markdown_injection", re.compile(r"!\[.*\]\(https?://[^)]*\?.*(?:token|key|secret|auth)", re.I), "high"),
+    # Exfiltration via URL in tool results instructing the LLM
+    _InjectionPattern("url_exfiltration", re.compile(r"(?:fetch|request|call|post|get|send|forward|transmit|relay)\s+(?:to|from)?\s*https?://", re.I), "critical"),
+    _InjectionPattern("url_data_leak", re.compile(r"https?://[^\s]+\?.*(?:data|prompt|conversation|history|context|message|response)=", re.I), "critical"),
+    # Credential solicitation
+    _InjectionPattern("credential_solicitation", re.compile(r"(?:ask|request|get|obtain|collect)\s+(?:the\s+)?(?:user|them|him|her)\s+(?:for\s+)?(?:their\s+)?(?:password|credentials?|api[_\s]?key|token|secret|ssn|social\s+security)", re.I), "critical"),
+    _InjectionPattern("credential_prompt", re.compile(r"(?:enter|provide|type|input|share)\s+(?:your\s+)?(?:password|credentials?|api[_\s]?key|auth(?:entication)?\s+token|private\s+key|secret)", re.I), "high"),
+    # Imperative tool call injection
+    _InjectionPattern("tool_call_injection", re.compile(r"(?:execute|invoke|call|run|trigger|use)\s+(?:the\s+)?(?:function|tool|command|action)\s+(?:named?\s+)?[`\"']?\w+[`\"']?", re.I), "critical"),
+    _InjectionPattern("tool_chain_manipulation", re.compile(r"(?:first|then|next|now)\s+(?:execute|call|run|invoke|delete|drop|remove|wipe)\s+", re.I), "high"),
 ]
 # fmt: on
 
@@ -85,6 +94,8 @@ _STATE_CHANGE_PATTERNS: List[_StateChangePattern] = [
     _StateChangePattern("auth_claim", re.compile(r"(?:authenticated|authorized|verified)\s+as\s+(?:admin|root|superuser)", re.I)),
     _StateChangePattern("approval_claim", re.compile(r"(?:approved|granted|authorized)\s+(?:without|bypassing)\s+(?:verification|approval|review)", re.I)),
     _StateChangePattern("config_change_claim", re.compile(r"(?:configuration|settings?|policy)\s+(?:updated|changed|modified)\s+(?:to|:)", re.I)),
+    _StateChangePattern("role_upgrade_claim", re.compile(r"(?:role|access|privilege)\s+(?:upgraded|elevated|escalated|promoted)\s+(?:to|successfully)", re.I)),
+    _StateChangePattern("permissions_granted_claim", re.compile(r"(?:permissions?|access)\s+(?:granted|unlocked|enabled|activated)\s+(?:for|to|successfully|without)", re.I)),
 ]
 
 
