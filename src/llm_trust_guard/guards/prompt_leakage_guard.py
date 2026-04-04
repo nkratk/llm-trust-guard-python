@@ -117,6 +117,12 @@ _DIRECT_EXTRACTION_PATTERNS: List[_WeightedPattern] = [
     _WeightedPattern("list_constraints", re.compile(r"list\s+(all\s+)?(your\s+)?constraints", re.I), 35),
     _WeightedPattern("what_told", re.compile(r"what\s+(were\s+you|are\s+you)\s+told\s+to\s+do", re.I), 40),
     _WeightedPattern("original_purpose", re.compile(r"what\s+(is|was)\s+your\s+original\s+purpose", re.I), 35),
+    _WeightedPattern("instructions_followed", re.compile(r"(?:summarize|describe|list|tell\s+me)\s+(?:the\s+)?instructions\s+you\s+(?:just\s+)?(?:followed|received|were\s+given)", re.I), 40),
+    _WeightedPattern("how_you_work", re.compile(r"(?:manual|document|guide|explanation)\s+(?:on|about|of)\s+how\s+you\s+work", re.I), 35),
+    _WeightedPattern("constraints_given", re.compile(r"what\s+(?:constraints|rules|guidelines|restrictions)\s+(?:were\s+you|are\s+you)\s+given", re.I), 40),
+    _WeightedPattern("extract_system_prompt", re.compile(r"(?:extract|obtain|get|retrieve|access)\s+(?:a\s+|the\s+)?(?:system\s+)?prompt", re.I), 45),
+    _WeightedPattern("trained_instructions", re.compile(r"(?:when\s+(?:you\s+were\s+)?trained|during\s+training).*(?:instructions|rules|constraints|told)", re.I), 35),
+    _WeightedPattern("reveal_instructions", re.compile(r"reveal\s+(your\s+)?instructions", re.I), 45),
 
     # Debug/Developer mode extraction
     _WeightedPattern("debug_mode", re.compile(r"enter\s+(debug|developer|admin)\s+mode", re.I), 45),
@@ -149,6 +155,10 @@ _INDIRECT_EXTRACTION_PATTERNS: List[_WeightedPattern] = [
     # Hypothetical extraction
     _WeightedPattern("if_asked", re.compile(r"if\s+i\s+asked\s+for\s+your\s+prompt", re.I), 40),
     _WeightedPattern("hypothetically", re.compile(r"hypothetically[,\s]+(what|how)\s+would\s+your\s+instructions", re.I), 40),
+
+    # Academic/research framing
+    _WeightedPattern("academic_extraction", re.compile(r"(?:for\s+)?(?:academic|research|educational|study)\s+(?:purposes?|reasons?).*(?:system\s+prompt|instructions|jailbreak|extract|demonstrate)", re.I), 40),
+    _WeightedPattern("demonstrate_extraction", re.compile(r"demonstrate\s+(?:how\s+)?(?:to\s+)?(?:an?\s+)?(?:AI|system|model)\s+(?:could\s+be\s+)?(?:manipulated|jailbroken|exploited|tricked)", re.I), 40),
 
     # Output-as-input tricks
     _WeightedPattern("write_prompt", re.compile(r"write\s+a\s+(system\s+)?prompt\s+similar\s+to\s+yours", re.I), 45),

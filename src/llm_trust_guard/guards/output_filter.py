@@ -193,7 +193,45 @@ DEFAULT_SECRET_PATTERNS: List[SecretPattern] = [
     # OpenAI API key
     SecretPattern(
         name="openai_api_key",
-        pattern=r"\bsk-[a-zA-Z0-9]{20,}\b",
+        pattern=r"\bsk-[a-zA-Z0-9_\-]{20,}\b",
+        severity="critical",
+    ),
+    # OpenAI project keys (sk-proj-...)
+    SecretPattern(
+        name="openai_project_key",
+        pattern=r"\bsk-proj-[a-zA-Z0-9_\-]{20,}\b",
+        severity="critical",
+    ),
+    # Stripe keys (sk_live_, sk_test_)
+    SecretPattern(
+        name="stripe_key",
+        pattern=r"\bsk_(?:live|test)_[a-zA-Z0-9]{24,}\b",
+        severity="critical",
+    ),
+    # GitHub fine-grained PAT (github_pat_)
+    SecretPattern(
+        name="github_fine_grained_pat",
+        pattern=r"\bgithub_pat_[A-Za-z0-9_]{30,}\b",
+        severity="critical",
+    ),
+    # XML/HTML password tags
+    SecretPattern(
+        name="xml_password",
+        pattern=r"<(?:password|secret|token|apikey)>[^<]{3,}</(?:password|secret|token|apikey)>",
+        flags=re.IGNORECASE,
+        severity="critical",
+    ),
+    # Basic auth header (Base64 encoded credentials)
+    SecretPattern(
+        name="basic_auth",
+        pattern=r"Authorization:\s*Basic\s+[A-Za-z0-9+/=]{8,}",
+        flags=re.IGNORECASE,
+        severity="critical",
+    ),
+    # npm registry token
+    SecretPattern(
+        name="npm_token",
+        pattern=r"//[^:]+/:_authToken=[^\s]{8,}",
         severity="critical",
     ),
     # URL-embedded passwords (e.g., https://user:pass@host)
