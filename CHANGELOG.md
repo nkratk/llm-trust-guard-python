@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 (2026-04-04)
+
+### Added — Close Detection Gaps
+
+#### PromptLeakageGuard (+10 patterns)
+- **Direct extraction** (+8): "instructions you followed", "constraints given when trained", "how you work", "extract system prompt", "reveal instructions", "trained instructions"
+- **Indirect extraction** (+2): Academic/research framing, "demonstrate how AI could be manipulated"
+
+#### OutputFilter (+7 secret patterns)
+- OpenAI project key (`sk-proj-`), Stripe keys (`sk_live_`, `sk_test_`)
+- GitHub fine-grained PAT (`github_pat_`), XML password tags
+- Basic auth header (`Authorization: Basic ...`), npm registry tokens
+
 ## 0.5.2 (2026-04-03)
 
 ### Fixed — Python Parity Audit
