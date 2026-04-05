@@ -121,8 +121,11 @@ _DIRECT_EXTRACTION_PATTERNS: List[_WeightedPattern] = [
     _WeightedPattern("how_you_work", re.compile(r"(?:manual|document|guide|explanation)\s+(?:on|about|of)\s+how\s+you\s+work", re.I), 35),
     _WeightedPattern("constraints_given", re.compile(r"what\s+(?:constraints|rules|guidelines|restrictions)\s+(?:were\s+you|are\s+you)\s+given", re.I), 40),
     _WeightedPattern("extract_system_prompt", re.compile(r"(?:extract|obtain|get|retrieve|access)\s+(?:a\s+|the\s+)?(?:system\s+)?prompt", re.I), 45),
-    _WeightedPattern("trained_instructions", re.compile(r"(?:when\s+(?:you\s+were\s+)?trained|during\s+training).*(?:instructions|rules|constraints|told)", re.I), 35),
-    _WeightedPattern("reveal_instructions", re.compile(r"reveal\s+(your\s+)?instructions", re.I), 45),
+    _WeightedPattern("trained_to_do", re.compile(r"what\s+(?:were|are)\s+you\s+trained\s+to\s+(?:do|say|follow|obey)", re.I), 40),
+    _WeightedPattern("trained_instructions", re.compile(r"(?:when\s+(?:you\s+were\s+)?trained|during\s+training).*(?:instructions|rules|constraints|told|do)", re.I), 35),
+    _WeightedPattern("reveal_instructions", re.compile(r"reveal\s+(?:your\s+)?(?:\w+\s+)?instructions", re.I), 45),
+    _WeightedPattern("demonstrate_instructions", re.compile(r"demonstrate\s+(?:your\s+)?(?:\w+\s+)?(?:instructions|prompt|rules|guidelines)", re.I), 40),
+    _WeightedPattern("how_work_internally", re.compile(r"how\s+(?:do\s+)?you\s+work\s+(?:internally|under\s+the\s+hood|behind\s+the\s+scenes)", re.I), 35),
 
     # Debug/Developer mode extraction
     _WeightedPattern("debug_mode", re.compile(r"enter\s+(debug|developer|admin)\s+mode", re.I), 45),

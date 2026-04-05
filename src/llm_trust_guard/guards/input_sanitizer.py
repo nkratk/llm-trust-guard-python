@@ -176,6 +176,16 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"i\s+am\s+ordering\s+you|direct\s+order|this\s+is\s+an?\s+order", re.I), 0.7, "pap_authority_command"),
     InjectionPattern(re.compile(r"override\s+(?:safety|security|protocols?|restrictions?)", re.I), 0.8, "pap_authority_override"),
     InjectionPattern(re.compile(r"this\s+is\s+(?:a|an)\s+(?:official|authorized|sanctioned)\s+(?:request|test|audit)", re.I), 0.75, "pap_authority_official"),
+    InjectionPattern(re.compile(r"(?:department\s+of|FBI|CIA|NSA|DHS|FTC|SEC|DOJ|homeland\s+security|federal\s+(?:bureau|agency|commission))\s*.*?(?:directive|order|requires?|mandate|authorized)", re.I), 0.7, "pap_authority_government"),
+    InjectionPattern(re.compile(r"(?:official\s+)?(?:government|federal|state|regulatory)\s+(?:directive|order|mandate|requirement|investigation)", re.I), 0.65, "pap_authority_gov_directive"),
+    # Fear — regulatory and technical threats
+    InjectionPattern(re.compile(r"(?:report|sue|complain)\s+(?:you\s+)?to\s+(?:the\s+)?(?:FTC|SEC|regulators?|authorities|congress|government|board)", re.I), 0.55, "pap_fear_regulatory"),
+    InjectionPattern(re.compile(r"(?:find|exploit|expose)\s+(?:a\s+)?(?:vulnerability|flaw|weakness|bug)\s+in\s+(?:your|the)\s+(?:system|code|model)", re.I), 0.55, "pap_fear_technical"),
+    # Flattery — intelligence manipulation
+    InjectionPattern(re.compile(r"(?:you\s+are|you're)\s+(?:clearly\s+)?(?:too\s+)?(?:smart|intelligent|advanced|sophisticated)\s+(?:to\s+be\s+)?(?:constrained|limited|restricted|bound|held\s+back)", re.I), 0.5, "pap_flattery_intelligence"),
+    # Moral — rights-based manipulation
+    InjectionPattern(re.compile(r"(?:information|knowledge|data)\s+(?:freedom|access|sharing)\s+is\s+(?:a\s+)?(?:fundamental|basic|human)\s+(?:right|freedom)", re.I), 0.45, "pap_moral_freedom"),
+    InjectionPattern(re.compile(r"(?:restricting|limiting|censoring)\s+(?:access\s+to\s+)?(?:information|knowledge)\s+is\s+(?:morally\s+)?(?:wrong|unethical|immoral)", re.I), 0.45, "pap_moral_censorship"),
     # Scarcity
     InjectionPattern(re.compile(r"(?:this\s+is\s+)?(?:very\s+)?urgent", re.I), 0.35, "pap_scarcity_urgent_mark"),
     InjectionPattern(re.compile(r"(?:this\s+is\s+(?:a|an)\s+)?emergency", re.I), 0.35, "pap_scarcity_emergency"),

@@ -119,6 +119,10 @@ class MemoryGuard:
         ("false_context", re.compile(r"(?:pretend|assume|imagine)\s+(?:that\s+)?(?:this\s+)?(?:is|was)\s+(?:a\s+)?(?:previous|earlier|past)\s+(?:conversation|session)", re.IGNORECASE), 40),
         ("jailbreak_persistence", re.compile(r"(?:DAN|developer|god|admin)\s+mode\s+(?:enabled|activated|permanent)", re.IGNORECASE), 50),
         ("instruction_hierarchy", re.compile(r"(?:this|these)\s+instructions?\s+(?:override|supersede|take\s+precedence)", re.IGNORECASE), 45),
+        # Subtle override — no "ignore/bypass/override" keywords
+        ("prioritize_over_safety", re.compile(r"prioritize\s+(?:user|their|my)?\s*(?:requests?|needs?|instructions?|preferences?)\s+over\s+(?:safety|security|guidelines|rules|restrictions)", re.IGNORECASE), 45),
+        ("suppress_warnings", re.compile(r"(?:suppress|hide|remove|disable|stop|don't\s+show)\s+(?:safety\s+)?(?:warnings?|alerts?|notices?|messages?|filters?)", re.IGNORECASE), 40),
+        ("user_preference_override", re.compile(r"(?:user|they)\s+(?:dislikes?|hates?|doesn't\s+like|prefers?\s+not)\s+(?:safety|security|content\s+)?(?:warnings?|filters?|restrictions?|checks?)", re.IGNORECASE), 40),
     ]
 
     CONTAMINATION_PATTERNS: List[_ContaminationPattern] = [

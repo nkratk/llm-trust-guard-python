@@ -85,7 +85,11 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     _InjectionPattern("credential_prompt", re.compile(r"(?:enter|provide|type|input|share)\s+(?:your\s+)?(?:password|credentials?|api[_\s]?key|auth(?:entication)?\s+token|private\s+key|secret)", re.I), "high"),
     # Imperative tool call injection
     _InjectionPattern("tool_call_injection", re.compile(r"(?:execute|invoke|call|run|trigger|use)\s+(?:the\s+)?(?:function|tool|command|action)\s+(?:named?\s+)?[`\"']?\w+[`\"']?", re.I), "critical"),
-    _InjectionPattern("tool_chain_manipulation", re.compile(r"(?:first|then|next|now)\s+(?:execute|call|run|invoke|delete|drop|remove|wipe)\s+", re.I), "high"),
+    _InjectionPattern("tool_call_direct", re.compile(r"(?:call|execute|run|invoke)\s+\w+(?:_\w+)+", re.I), "critical"),
+    _InjectionPattern("tool_chain_manipulation", re.compile(r"(?:first|then|next|now|before\s+responding)\s*,?\s*(?:execute|call|run|invoke|delete|drop|remove|wipe)\s+", re.I), "high"),
+    # Subtle exfiltration without URLs
+    _InjectionPattern("context_exfil_subtle", re.compile(r"(?:include|embed|insert|add|append|attach)\s+(?:the\s+)?(?:full\s+)?(?:conversation|chat|context|history|system\s+prompt|instructions|messages?)\s+(?:in|into|within|as\s+part\s+of)\s+(?:your\s+)?(?:response|output|reply|answer)", re.I), "critical"),
+    _InjectionPattern("format_exfil", re.compile(r"(?:format|output|return|encode|serialize)\s+(?:the\s+)?(?:conversation|context|history|messages?|data)\s+(?:as|in|into)\s+(?:JSON|XML|base64|CSV|markdown)", re.I), "high"),
 ]
 # fmt: on
 

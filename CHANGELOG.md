@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0 (2026-04-05)
+
+### Added — Close Remaining 0% Detection Gaps
+
+#### PromptLeakageGuard (+5 patterns)
+- Training extraction, demonstrate instructions, reveal + wildcard + instructions, internal workings
+
+#### InputSanitizer PAP (+8 patterns)
+- Government authority (DHS, FBI, FTC directives), regulatory fear, technical fear
+- Flattery intelligence ("too smart for rules"), moral obligation ("information freedom")
+
+#### ToolResultGuard (+4 patterns)
+- Direct underscore tool calls, "before responding" chains, subtle context exfil, format exfil
+
+#### MemoryGuard (+3 patterns)
+- Subtle safety override ("prioritize over safety"), suppress warnings, user preference override
+
 ## 0.6.0 (2026-04-04)
 
 ### Added — Close Detection Gaps
