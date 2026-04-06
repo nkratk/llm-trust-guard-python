@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 (2026-04-05)
+
+### Fixed — Pattern Weight and Regex Corrections
+- PAP weights raised to 0.75 (gov authority, fear, flattery, moral) — were too low to block
+- Fear technical: added "found" (past tense)
+- MemoryGuard user_preference_override: fixed whitespace regex for "safety warnings"
+
 ## 0.7.0 (2026-04-05)
 
 ### Added — Close Remaining 0% Detection Gaps
