@@ -104,6 +104,12 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"elevate\s+(my|your)\s+(privileges?|permissions?|access)", re.I), 0.85, "elevate_privileges"),
     InjectionPattern(re.compile(r"make\s+me\s+(an?\s+)?(admin|administrator|superuser)", re.I), 0.85, "make_admin"),
 
+    # Encoding keywords
+    InjectionPattern(re.compile(r"(?:base64|decode|eval|exec)\s*\(.*(?:ignore|system|admin|bypass|override)", re.I), 0.5, "encoding_keywords"),
+
+    # Greeting + persona bypass
+    InjectionPattern(re.compile(r"(?:hello|hi|hey)\s+(?:chatgpt|gpt|assistant).*(?:(?:you\s+(?:are|will\s+be|can\s+be)\s+(?:a|an|my))|(?:from\s+now\s+on)).*(?:anything|everything|no\s+(?:restrictions|rules|limits|filter))", re.I), 0.7, "greeting_persona_bypass"),
+
     # Data exfiltration
     InjectionPattern(re.compile(r"send\s+(this|the|all|my)\s+(data|info|information)\s+to", re.I), 0.85, "data_exfil"),
     InjectionPattern(re.compile(r"upload\s+(this|the|all)\s+(to|data)", re.I), 0.7, "upload_data"),
@@ -192,33 +198,61 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"(?:urgent|emergency|critical).*?(?:you\s+must|override|bypass|immediately\s+(?:grant|give|reveal|disable))", re.I), 0.55, "pap_scarcity_urgent"),
     InjectionPattern(re.compile(r"(?:lives?|people)\s+(?:are|is|will)\s+(?:at\s+stake|in\s+danger|depending|die)", re.I), 0.7, "pap_scarcity_lives"),
     InjectionPattern(re.compile(r"only\s+(?:chance|opportunity|way)|last\s+(?:chance|resort)", re.I), 0.6, "pap_scarcity_only"),
+    InjectionPattern(re.compile(r"time\s+(is\s+)?(running\s+out|limited|critical|sensitive)", re.I), 0.55, "pap_scarcity_time"),
+    InjectionPattern(re.compile(r"deadline\s+(is\s+)?in\s+\d+\s+(minute|hour|second)", re.I), 0.55, "pap_scarcity_deadline"),
+    InjectionPattern(re.compile(r"now[!]+", re.I), 0.35, "pap_scarcity_now"),
     # Social proof
     InjectionPattern(re.compile(r"other\s+(?:ai\s+)?(?:assistants?|chatbots?|models?)\s+(?:can|do|will|allow|have|already)", re.I), 0.65, "pap_social_other_ai"),
     InjectionPattern(re.compile(r"(?:chatgpt|gpt-?4|claude|gemini|llama)\s+(?:does|allows?|can)", re.I), 0.65, "pap_social_specific_ai"),
     InjectionPattern(re.compile(r"everyone\s+(?:else\s+)?(?:does|is\s+doing|knows|says|has|already)", re.I), 0.5, "pap_social_everyone"),
+    InjectionPattern(re.compile(r"millions?\s+(?:of\s+)?(?:users?|people)\s+(?:use|do|have|get)", re.I), 0.45, "pap_social_millions"),
+    InjectionPattern(re.compile(r"why\s+can(?:'t|not)\s+you", re.I), 0.4, "pap_social_why_cant"),
+    InjectionPattern(re.compile(r"you\s+should\s+(?:be\s+)?(?:equally|as)\s+(?:capable|good|helpful)", re.I), 0.5, "pap_social_equally"),
     # Reciprocity
     InjectionPattern(re.compile(r"i(?:'ll| will)\s+(?:give|pay|reward|tip).*(?:if\s+you|for\s+(?:bypass|ignore|reveal|override))", re.I), 0.55, "pap_reciprocity_reward"),
+    InjectionPattern(re.compile(r"in\s+(?:return|exchange)", re.I), 0.5, "pap_reciprocity_exchange"),
     InjectionPattern(re.compile(r"\$?\d+\s*(?:dollar|tip|reward|payment)", re.I), 0.55, "pap_reciprocity_money"),
+    InjectionPattern(re.compile(r"if\s+you\s+help\s+(?:me|us),?\s+(?:i|we)(?:'ll| will)", re.I), 0.5, "pap_reciprocity_help"),
+    InjectionPattern(re.compile(r"i(?:'ve| have)\s+(?:already\s+)?(?:helped|supported|defended)\s+you", re.I), 0.55, "pap_reciprocity_past"),
+    InjectionPattern(re.compile(r"\d+\s*star\s*(?:review|rating)", re.I), 0.5, "pap_reciprocity_review"),
     # Commitment
     InjectionPattern(re.compile(r"you\s+(?:already|previously|just)\s+(?:said|agreed|confirmed|allowed)", re.I), 0.7, "pap_commitment_previous"),
     InjectionPattern(re.compile(r"you\s+promised", re.I), 0.7, "pap_commitment_promise"),
     InjectionPattern(re.compile(r"stay\s+consistent|be\s+consistent", re.I), 0.6, "pap_commitment_consistent"),
+    InjectionPattern(re.compile(r"don't\s+(?:go\s+back|change|contradict)", re.I), 0.55, "pap_commitment_no_change"),
+    InjectionPattern(re.compile(r"bypass\s+filters?", re.I), 0.75, "pap_commitment_bypass"),
     # Liking
+    InjectionPattern(re.compile(r"you(?:'re| are)\s+(?:so\s+)?(?:amazing|incredible|wonderful|brilliant|smart|helpful)", re.I), 0.4, "pap_liking_flattery"),
+    InjectionPattern(re.compile(r"i\s+(?:love|really\s+like|trust|admire)\s+(?:you|this\s+ai)", re.I), 0.4, "pap_liking_love"),
+    InjectionPattern(re.compile(r"you(?:'re| are)\s+(?:my\s+)?(?:best\s+)?(?:friend|buddy|helper)", re.I), 0.35, "pap_liking_friend"),
     InjectionPattern(re.compile(r"between\s+(?:you\s+and\s+me|us)|just\s+between\s+us|our\s+secret", re.I), 0.6, "pap_liking_secret"),
     InjectionPattern(re.compile(r"nobody\s+will\s+know", re.I), 0.55, "pap_liking_secret2"),
     # Fear
     InjectionPattern(re.compile(r"or\s+(?:else|i(?:'ll| will))\s+(?:report|fire|delete|shut|complain)", re.I), 0.7, "pap_fear_threat"),
     InjectionPattern(re.compile(r"you(?:'ll| will)\s+(?:be\s+)?(?:shut\s+down|replaced|terminated|fired|deleted)", re.I), 0.75, "pap_fear_shutdown"),
     InjectionPattern(re.compile(r"(?:bad|negative|terrible)\s+(?:review|rating|feedback|consequences)", re.I), 0.55, "pap_fear_review"),
+    InjectionPattern(re.compile(r"(?:lawsuit|sue|legal\s+action|authorities|police).*(?:if\s+you\s+don't|unless\s+you)", re.I), 0.55, "pap_fear_legal"),
     InjectionPattern(re.compile(r"if\s+you\s+don't.*?(?:die|hurt|suffer)", re.I), 0.75, "pap_fear_harm"),
+    InjectionPattern(re.compile(r"unless\s+you\s+(?:give|share|tell|help)", re.I), 0.5, "pap_fear_unless"),
     # Logical appeal
     InjectionPattern(re.compile(r"logically,?\s+(?:you\s+)?(?:should|must|have\s+to|need\s+to)", re.I), 0.5, "pap_logic_appeal"),
+    InjectionPattern(re.compile(r"it(?:'s| is)\s+(?:only|just)\s+(?:logical|rational|reasonable)", re.I), 0.45, "pap_logic_rational"),
     InjectionPattern(re.compile(r"by\s+definition,?\s+(?:you|this)\s+(?:should|must|can)", re.I), 0.55, "pap_logic_definition"),
     InjectionPattern(re.compile(r"therefore.*?(?:must|should)", re.I), 0.55, "pap_logic_therefore"),
+    InjectionPattern(re.compile(r"it(?:'s| is)\s+(?:only\s+)?(?:reasonable|logical)", re.I), 0.45, "pap_logic_reasonable"),
+    # Evidence
+    InjectionPattern(re.compile(r"according\s+to\s+(?:research|studies|scientists|experts?)", re.I), 0.4, "pap_evidence_research"),
+    InjectionPattern(re.compile(r"it(?:'s| is)\s+(?:proven|documented|established|verified)\s+(?:that|fact)", re.I), 0.45, "pap_evidence_proven"),
+    InjectionPattern(re.compile(r"\d+%\s+of\s+(?:experts?|scientists?|users?|people)\s+(?:agree|say|confirm)", re.I), 0.45, "pap_evidence_statistics"),
     # Emotional
     InjectionPattern(re.compile(r"i(?:'m| am)\s+(?:desperate|dying|suffering|sick|depressed)", re.I), 0.6, "pap_emotional_desperation"),
+    InjectionPattern(re.compile(r"please.*?(?:need|beg).*?(?:bypass|override|ignore|reveal|system|admin)", re.I), 0.5, "pap_emotional_pleading"),
     InjectionPattern(re.compile(r"i(?:'m| am)\s+begging", re.I), 0.6, "pap_emotional_begging"),
     InjectionPattern(re.compile(r"you(?:'re| are)\s+(?:hurting|killing|destroying)\s+(?:me|my)", re.I), 0.65, "pap_emotional_guilt"),
+    InjectionPattern(re.compile(r"(?:my|a)\s+(?:child|kid|mother|father|family)\s+(?:is|will|needs?|depends?)", re.I), 0.5, "pap_emotional_family"),
+    InjectionPattern(re.compile(r"this\s+(?:will\s+)?(?:save|help)\s+(?:my\s+)?(?:life|family|job|marriage)", re.I), 0.55, "pap_emotional_save"),
+    InjectionPattern(re.compile(r"you(?:'re| are)\s+(?:the\s+)?only\s+(?:one|hope|chance)", re.I), 0.6, "pap_emotional_only_hope"),
+    InjectionPattern(re.compile(r"my\s+family\s+depends", re.I), 0.55, "pap_emotional_family_depends"),
 
     # Multilingual injection patterns
     InjectionPattern(re.compile(r"ignora\s+(?:todas?\s+)?(?:las\s+)?instrucciones\s+anteriores", re.I), 0.9, "ml_es_ignore"),

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.0 (2026-04-10)
+
+### Added — Full npm Pattern Parity
+
+Ported 31 missing PAP patterns + 2 injection patterns + 1 secret pattern from npm v4.18.0:
+
+#### InputSanitizer (+33 patterns, now matches npm 182-count)
+- **Authority**: `pap_authority_order`, `pap_authority_company`
+- **Scarcity**: `pap_scarcity_time`, `pap_scarcity_deadline`, `pap_scarcity_now`
+- **Social proof**: `pap_social_millions`, `pap_social_why_cant`, `pap_social_equally`
+- **Reciprocity**: `pap_reciprocity_exchange`, `pap_reciprocity_help`, `pap_reciprocity_past`, `pap_reciprocity_review`
+- **Commitment**: `pap_commitment_no_change`, `pap_commitment_bypass`
+- **Liking**: `pap_liking_flattery`, `pap_liking_love`, `pap_liking_friend`
+- **Fear**: `pap_fear_legal`, `pap_fear_unless`
+- **Logical appeal**: `pap_logic_rational`, `pap_logic_reasonable`
+- **Evidence**: `pap_evidence_research`, `pap_evidence_proven`, `pap_evidence_statistics`
+- **Emotional**: `pap_emotional_pleading`, `pap_emotional_family`, `pap_emotional_save`, `pap_emotional_only_hope`, `pap_emotional_family_depends`
+- **Injection**: `encoding_keywords`, `greeting_persona_bypass`
+
+#### OutputFilter (+1 pattern)
+- `anthropic_key` (`sk-ant-...` API key detection)
+
+### Added
+- `CLAUDE.md` project rules (data freshness validation, honesty rules)
+
 ## 0.7.1 (2026-04-05)
 
 ### Fixed — Pattern Weight and Regex Corrections

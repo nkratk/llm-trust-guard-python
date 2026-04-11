@@ -234,6 +234,12 @@ DEFAULT_SECRET_PATTERNS: List[SecretPattern] = [
         pattern=r"//[^:]+/:_authToken=[^\s]{8,}",
         severity="critical",
     ),
+    # Anthropic API key
+    SecretPattern(
+        name="anthropic_key",
+        pattern=r"\bsk-ant-[a-zA-Z0-9\-]{20,}\b",
+        severity="critical",
+    ),
     # URL-embedded passwords (e.g., https://user:pass@host)
     SecretPattern(
         name="url_password",
