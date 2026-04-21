@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.1 (2026-04-20)
+
+### Fixed — Ship Blockers and Metadata
+
+- **`__version__` ship blocker**: `src/llm_trust_guard/__init__.py` declared `__version__ = "0.4.0"` while `pyproject.toml` was at `0.8.0`. Programmatic version checks lied. Now synchronized
+- **Missing LICENSE file**: the package declared `license = {text = "MIT"}` in `pyproject.toml` but there was no `LICENSE` file in the repo or distributed with the sdist/wheel. Added MIT LICENSE file
+- **README guard count**: "All 31 Guards" heading and "npm — 31 guards" link description were stale. Bumped to 34
+- **README multi-agent table**: SpawnPolicyGuard, DelegationScopeGuard, TrustTransitivityGuard were added in v0.5.0 but never listed in the README guard table. Added under new "Multi-Agent Guards (OWASP ASI07)" section
+
+### Changed — Package Hygiene
+
+- Migrated to PEP 639 SPDX license form: `license = "MIT"` + `license-files = ["LICENSE"]` (was deprecated `{text = "MIT"}` table form)
+- Removed redundant `License :: OSI Approved :: MIT License` classifier (PyPI now sources license from SPDX field)
+- Bumped `Development Status` classifier from `4 - Beta` to `5 - Production/Stable` (677 tests, 34 guards, stable API)
+- Pinned `build-system.requires = ["hatchling>=1.27"]` — required for PEP 639 SPDX support
+- Updated `description` to reflect 34 guards and Agentic Applications 2026 coverage
+
+### Stats
+- 34 guards, 677 tests, zero dependencies (unchanged)
+
 ## 0.8.0 (2026-04-10)
 
 ### Added — Full npm Pattern Parity
