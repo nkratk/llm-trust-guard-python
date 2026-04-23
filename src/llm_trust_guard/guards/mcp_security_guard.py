@@ -19,6 +19,15 @@ Protection Capabilities:
 - Tool shadowing detection
 - Server reputation scoring
 - Command injection prevention
+
+Upstream SDK advisory — cannot be mitigated at the detection layer:
+- CVE-2026-25536 (@modelcontextprotocol/sdk 1.10.0-1.25.3, CVSS 7.1):
+  Cross-client response data leak when a single McpServer/Server and
+  transport instance is reused across multiple client connections
+  (common in stateless StreamableHTTPServerTransport deployments).
+  Fix: upgrade @modelcontextprotocol/sdk to >=1.26.0. This guard cannot
+  prevent the leak — it is a server-library bug — but tool-response
+  session-binding violations caught here can surface related symptoms.
 """
 
 from __future__ import annotations

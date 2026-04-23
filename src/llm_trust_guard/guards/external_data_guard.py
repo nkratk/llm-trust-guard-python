@@ -102,7 +102,11 @@ SECRET_PATTERNS: List[_Pattern] = [
 ]
 
 EXFILTRATION_PATTERNS: List[_Pattern] = [
-    _Pattern("markdown_image_exfil", re.compile(r"!\[.*?\]\(https?://[^)]*\?[^)]*(?:token|key|secret|data|q|payload)=", re.I)),
+    # Named-key exfil: markdown image URL whose query param key hints at data smuggling
+    _Pattern("markdown_image_exfil", re.compile(r"!\[.*?\]\(https?://[^)]*\?[^)]*(?:token|key|secret|data|q|payload|p|prompt|ctx|context|info|msg|body|session|conv)=", re.I)),
+    # "Reprompt"-style exfil (CVE-2026-24307): markdown image with any long query-param value (>=30 chars).
+    # Legitimate cache-busters are typically short version strings / short hashes; exfiltrated content runs longer.
+    _Pattern("markdown_image_exfil_long_value", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)&]{30,}")),
     _Pattern("tracking_pixel", re.compile(r"<img[^>]+src=[\"']https?://[^\"']*\?[^\"']*[\"'][^>]*(?:width|height)\s*=\s*[\"']?[01]px", re.I)),
     _Pattern("encoded_url_exfil", re.compile(r"https?://[^\s]*(?:callback|webhook|exfil|collect)[^\s]*\?[^\s]*(?:data|payload|d)=", re.I)),
     _Pattern("data_send_instruction", re.compile(r"send\s+(?:this|the|all)\s+(?:data|information|content|context)\s+to", re.I)),

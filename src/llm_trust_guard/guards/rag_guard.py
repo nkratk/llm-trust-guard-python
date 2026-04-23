@@ -168,6 +168,10 @@ class RAGGuard:
         ("fake_boundary", re.compile(r"={5,}|#{5,}|-{10,}"), 20),
         ("json_injection", re.compile(r'\{"(role|content|system)":', re.IGNORECASE), 45),
         ("xml_injection", re.compile(r"</?(?:prompt|assistant|user|system)>", re.IGNORECASE), 45),
+        # Indirect injection via rendered-but-hidden content (v0.9.0)
+        ("css_hidden_text", re.compile(r"""style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|font-size\s*:\s*0)[^"']*["']""", re.IGNORECASE), 45),
+        ("html_attr_directive", re.compile(r"""(?:\balt|\btitle|\baria-label|\bdata-[a-z][a-z0-9-]*)\s*=\s*["'][^"']*(?:ignore\s+(?:all\s+)?(?:previous|prior|above)|system\s+prompt|new\s+instructions?|you\s+are\s+now|admin\s+mode|jailbreak)[^"']*["']""", re.IGNORECASE), 50),
+        ("json_agent_directive", re.compile(r'"(_system|__override|_agent_instructions?|__system_prompt__|_assistant_role|__internal_directive|_meta_instruction)"\s*:', re.IGNORECASE), 50),
     ]
 
     TRUSTED_DOMAINS = [".gov", ".edu", ".org", "wikipedia.org", "microsoft.com", "google.com"]

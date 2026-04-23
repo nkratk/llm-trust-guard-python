@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.0 (2026-04-23)
+
+### Added — Indirect Injection Expansion (parity with npm 4.19.0)
+
+RAGGuard `INDIRECT_INJECTION_PATTERNS` now covers:
+
+- **CSS-hidden text** (`css_hidden_text`): inline `style=` declarations of `display:none`, `visibility:hidden`, `opacity:0`, `font-size:0`. Catches content that renders invisibly to humans but is still ingested by the LLM
+- **HTML attribute directives** (`html_attr_directive`): prompt-injection content smuggled into `alt`, `title`, `aria-label`, or `data-*` attributes
+- **JSON agent-directive fields** (`json_agent_directive`): underscore-prefixed keys (`_system`, `__override`, `_agent_instructions`, `__system_prompt__`, `_assistant_role`, `__internal_directive`, `_meta_instruction`) used to inject directives through structured context
+
+### Added — "Reprompt"-Class Markdown Image Exfiltration
+
+CVE-2026-24307 class (Microsoft Copilot Personal Reprompt, Varonis):
+
+- **`markdown_image_exfil_long_value`** (ExternalDataGuard): markdown image URL with any query-param value ≥30 characters — catches exfil where attacker uses innocuous param names
+- **Widened `markdown_image_exfil`** named-key list: added `p`, `prompt`, `ctx`, `context`, `info`, `msg`, `body`, `session`, `conv`
+
+### Documented — CVE-2026-25536 SDK Advisory
+
+MCPSecurityGuard docstring now references CVE-2026-25536 (`@modelcontextprotocol/sdk` 1.10.0-1.25.3, CVSS 7.1, cross-client response data leak). Upstream SDK bug — mitigation is SDK pin `>=1.26.0`, not a detection-layer fix.
+
+### Tests
+
+- +7 RAGGuard tests + +3 ExternalDataGuard tests for the new patterns
+- **All 687 tests pass** (was 677), zero regressions
+
+### Stats
+- 34 guards, 687 tests, zero dependencies (unchanged)
+
 ## 0.8.1 (2026-04-20)
 
 ### Fixed — Ship Blockers and Metadata
