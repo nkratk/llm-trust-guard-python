@@ -217,6 +217,25 @@ tool_result = guard.validate_tool_result("search", tool_output)
 | ASI09: Trust Exploitation | TrustExploitationGuard | Strong |
 | ASI10: Rogue Agents | DriftDetector, AutonomyEscalationGuard | Moderate |
 
+## Measured Performance
+
+v0.9.0 shares the regex family with llm-trust-guard npm 4.19.0. Benchmark from 2026-04-23. Full methodology, confidence intervals, hand-adjudication labels, and reproducibility scripts live in the npm repo: [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md).
+
+**Attack detection on prior-published corpora** (Giskard n=35, Compass CTF Chinese n=11): detection rate has not moved from v4.13.5 on the Sanitizer+Encoder pipeline — 80.00% and 9.09% respectively, identical to v4.13.5. Six minor releases of pattern additions targeted different attack classes (indirect injection, tool-result validation, memory persistence, multi-agent trust) that these direct-text jailbreak corpora do not exercise. Small sample sizes mean "no evidence of improvement," not "proof of no improvement."
+
+**False-positive rate on real ChatGPT production traffic** (WildChat-1M shard 0, 10,000 non-toxic multilingual first-user-turns, seed=42):
+
+| Pipeline | Blocks | Raw block rate | Corrected FPR (after label adjudication) |
+|---|---|---|---|
+| Sanitizer + Encoder | 493 / 10,000 | 4.93% [4.52, 5.37] | **~2.73%** [2.43, 2.84] |
+| Detection-only facade | 898 / 10,000 | 8.98% [8.44, 9.56] | ≤6.69% (upper bound; not fully adjudicated) |
+
+WildChat filters toxic content but not prompt-injection intent. Canonical-marker analysis + a 50-sample hand-adjudication found that approximately 220 of the 493 Pipeline A blocks are actual jailbreak attempts users sent to ChatGPT, not genuine false positives. Corrected FPR is in the same order of magnitude as Meta Prompt Guard 86M's self-reported 3–5% out-of-distribution FPR — not a head-to-head comparison, but a useful reference point.
+
+**Not measured:** detection rate on the four attack classes added in v0.9.0 (CSS-hidden content, HTML attribute directives, JSON agent-directive fields, Reprompt-class markdown exfiltration). No public held-out corpus exists for these at statistical scale. Unit-test coverage is in the v0.9.0 test suite; independent third-party evaluation is invited.
+
+For higher detection on adversarial corpora, plug in an ML classifier via the [DetectionClassifier interface](#pluggable-detection).
+
 ## Defense In Depth
 
 This package is one layer. For production systems, combine with:

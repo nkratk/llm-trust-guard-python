@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-trust-guard"
-version = "0.9.0"
+version = "0.9.1"
 description = "Security guards for LLM-powered and agentic AI applications. 34 guards, zero dependencies. Covers OWASP Top 10 for LLMs 2025 and Agentic Applications 2026."
 readme = "README.md"
 license = "MIT"

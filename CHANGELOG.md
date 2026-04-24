@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.1 (2026-04-23)
+
+### Added — Measured Performance
+
+- New README section "Measured Performance" with measured numbers from the v4.19.0 benchmark run (npm + Python share the regex family). Full methodology, confidence intervals, hand-adjudication labels, and reproducibility scripts live in the npm repo: [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md)
+- Pipeline A corrected FPR on real ChatGPT production traffic (WildChat-1M, n=10,000, seed=42): **~2.73%** [95% CI 2.43, 2.84], same order of magnitude as Meta Prompt Guard 86M's self-reported 3–5% OOD FPR
+- On Giskard (n=35) and Compass CTF Chinese (n=11), Pipeline A detection rate is unchanged from v4.13.5. Underpowered; "no evidence of improvement"
+
+### Not changed
+
+- No code changes. No detection patterns added or modified. All 687 tests still pass
+
 ## 0.9.0 (2026-04-23)
 
 ### Added — Indirect Injection Expansion (parity with npm 4.19.0)
