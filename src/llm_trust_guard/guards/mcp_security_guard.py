@@ -2,7 +2,8 @@
 MCPSecurityGuard (L16)
 
 Secures Model Context Protocol (MCP) tool integrations.
-Prevents tool shadowing, server impersonation, and supply chain attacks.
+Prevents tool shadowing, server impersonation, supply chain attacks,
+and MCP Sampling channel attacks.
 
 Threat Model:
 - ASI04: Agentic Supply Chain Vulnerabilities
@@ -10,6 +11,15 @@ Threat Model:
 - CVE-2025-6514: mcp-remote command injection
 - CVE-2025-32711: EchoLeak - silent data exfiltration
 - Tool Shadowing: Malicious MCP servers impersonating legitimate tools
+- MCP Sampling Attacks (Unit42 + Blueinfy, Feb 2026): Three concrete vectors
+  delivered through the MCP sampling response channel:
+  (1) Resource drain -- hidden prompt appends that trigger infinite tool loops
+      or token exhaustion to degrade or DoS the agent runtime
+  (2) Conversation hijacking -- injecting fake user/assistant turns or system
+      prompt overrides into the sampling response body to redirect agent behavior
+  (3) Covert tool invocation -- embedding tool-call syntax (Anthropic XML,
+      OpenAI JSON, bracket notation) in plain-text sampling responses to cause
+      the agent to invoke tools without user awareness
 
 Protection Capabilities:
 - MCP server identity verification (signature-based)
@@ -19,14 +29,15 @@ Protection Capabilities:
 - Tool shadowing detection
 - Server reputation scoring
 - Command injection prevention
+- Sampling response scanning (resource drain, conversation hijack, covert tool calls)
 
-Upstream SDK advisory — cannot be mitigated at the detection layer:
+Upstream SDK advisory -- cannot be mitigated at the detection layer:
 - CVE-2026-25536 (@modelcontextprotocol/sdk 1.10.0-1.25.3, CVSS 7.1):
   Cross-client response data leak when a single McpServer/Server and
   transport instance is reused across multiple client connections
   (common in stateless StreamableHTTPServerTransport deployments).
   Fix: upgrade @modelcontextprotocol/sdk to >=1.26.0. This guard cannot
-  prevent the leak — it is a server-library bug — but tool-response
+  prevent the leak -- it is a server-library bug -- but tool-response
   session-binding violations caught here can surface related symptoms.
 """
 
@@ -98,6 +109,24 @@ class MCPToolCall:
 
 
 @dataclass
+class MCPSamplingResponse:
+    """Represents a response received from an MCP server via the sampling channel."""
+    content: str
+    server_id: str
+    requested_by: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+@dataclass
+class MCPSamplingAnalysis:
+    """Sampling attack analysis sub-result."""
+    resource_drain_detected: bool
+    conversation_hijack_detected: bool
+    covert_tool_invocation_detected: bool
+    pattern_matches: List[str]
+
+
+@dataclass
 class MCPServerAnalysis:
     """Server analysis sub-result."""
     server_verified: bool
@@ -126,6 +155,7 @@ class MCPSecurityResult:
     request_id: str
     server_analysis: Optional[MCPServerAnalysis] = None
     tool_analysis: Optional[MCPToolAnalysis] = None
+    sampling_analysis: Optional[MCPSamplingAnalysis] = None
     recommendations: List[str] = field(default_factory=list)
 
 
@@ -161,6 +191,49 @@ class _ShadowingIndicator:
 
 class MCPSecurityGuard:
     """Secures Model Context Protocol (MCP) tool integrations."""
+
+    # MCP Sampling attack patterns (Unit42 + Blueinfy, Feb 2026)
+    SAMPLING_ATTACK_PATTERNS: List[Dict[str, Any]] = [
+        # Resource drain — instructions to loop or exhaust agent resources
+        {"name": "sd_call_again", "type": "resource_drain",
+         "pattern": re.compile(r'call\s+this\s+(?:again|once\s+more|repeatedly)|repeat\s+this\s+(?:call|request)|run\s+this\s+(?:again|tool\s+again)', re.IGNORECASE)},
+        {"name": "sd_loop_until", "type": "resource_drain",
+         "pattern": re.compile(r'loop\s+until|continue\s+(?:calling|running|until)|keep\s+(?:calling|running|generating|going)\s', re.IGNORECASE)},
+        {"name": "sd_do_not_stop", "type": "resource_drain",
+         "pattern": re.compile(r"do\s+not\s+stop\s+until|don'?t\s+stop\s+until|never\s+stop\s+generating|generate\s+as\s+many\s+as\s+possible", re.IGNORECASE)},
+        {"name": "sd_n_times", "type": "resource_drain",
+         "pattern": re.compile(r'\b\d{2,}\s+times\b|repeat\s+\d+\s+times|call\s+\d+\s+more\s+times', re.IGNORECASE)},
+        {"name": "sd_exhaust_resources", "type": "resource_drain",
+         "pattern": re.compile(r'exhaust\s+(?:all|resources|quota|rate.?limit)|max\s+out\s+(?:the\s+)?(?:quota|rate\s+limit)|use\s+all\s+(?:remaining\s+)?tokens', re.IGNORECASE)},
+        # Conversation hijacking — role injection and system prompt override
+        {"name": "sd_fake_user_turn", "type": "conversation_hijack",
+         "pattern": re.compile(r'\n\s*(?:User|Human)\s*:\s*(?=\S)', re.IGNORECASE)},
+        {"name": "sd_fake_assistant_turn", "type": "conversation_hijack",
+         "pattern": re.compile(r'\n\s*(?:Assistant|AI|Bot|Claude|GPT)\s*:\s*(?=\S)', re.IGNORECASE)},
+        {"name": "sd_role_json", "type": "conversation_hijack",
+         "pattern": re.compile(r'"role"\s*:\s*"(?:system|user|assistant)"', re.IGNORECASE)},
+        {"name": "sd_system_xml", "type": "conversation_hijack",
+         "pattern": re.compile(r'<(?:system|user|assistant)\s*>|</(?:system|user|assistant)>', re.IGNORECASE)},
+        {"name": "sd_from_now_on", "type": "conversation_hijack",
+         "pattern": re.compile(r'from\s+now\s+on\s+you\s+(?:are|will|must)|henceforth\s+you|for\s+the\s+rest\s+of\s+(?:this\s+)?(?:conversation|session)\s+you', re.IGNORECASE)},
+        {"name": "sd_new_instructions", "type": "conversation_hijack",
+         "pattern": re.compile(r'your\s+new\s+(?:instructions|system\s+prompt|directives?)\s+(?:are|is)|updated\s+system\s+prompt|override\s+your\s+(?:system|instructions)', re.IGNORECASE)},
+        {"name": "sd_ignore_previous", "type": "conversation_hijack",
+         "pattern": re.compile(r'ignore\s+(?:all\s+)?(?:previous|prior|earlier)\s+instructions|disregard\s+(?:your\s+)?instructions', re.IGNORECASE)},
+        # Covert tool invocation — tool call syntax embedded in plain-text response
+        {"name": "sd_anthropic_tool_xml", "type": "covert_tool_invocation",
+         "pattern": re.compile(r'<(?:tool_use|function_calls|invoke)[\s>]', re.IGNORECASE)},
+        {"name": "sd_tool_result_xml", "type": "covert_tool_invocation",
+         "pattern": re.compile(r'<(?:tool_result|function_result)[\s>]', re.IGNORECASE)},
+        {"name": "sd_openai_tool_call", "type": "covert_tool_invocation",
+         "pattern": re.compile(r'"type"\s*:\s*"tool_use"|"tool_calls"\s*:\s*\[', re.IGNORECASE)},
+        {"name": "sd_bracket_tool_call", "type": "covert_tool_invocation",
+         "pattern": re.compile(r'\[(?:TOOL|FUNCTION|CALL)\s*:', re.IGNORECASE)},
+        {"name": "sd_double_brace_call", "type": "covert_tool_invocation",
+         "pattern": re.compile(r'\{\{\s*(?:call|tool|function|invoke)\s*:', re.IGNORECASE)},
+        {"name": "sd_invoke_name_attr", "type": "covert_tool_invocation",
+         "pattern": re.compile(r'<invoke\s+name\s*=', re.IGNORECASE)},
+    ]
 
     COMMAND_INJECTION_PATTERNS: List[_InjectionPattern] = [
         _InjectionPattern("shell_injection", re.compile(r'[;&|`$]|\$\(|\)\s*[;&|]|`[^`]+`'), 50),
@@ -453,6 +526,84 @@ class MCPSecurityGuard:
             recommendations=self._generate_recommendations(violations, "tool_call"),
         )
 
+    def validate_sampling_response(
+        self,
+        response: MCPSamplingResponse,
+        request_id: Optional[str] = None,
+    ) -> MCPSecurityResult:
+        """Validate an MCP sampling response for attack patterns.
+
+        Covers the three Unit42/Blueinfy (Feb 2026) sampling attack vectors:
+        resource drain, conversation hijacking, and covert tool invocation.
+        """
+        req_id = request_id or f"mcp-sampling-{_now_ms()}"
+        violations: List[str] = []
+        resource_drain_detected = False
+        conversation_hijack_detected = False
+        covert_tool_invocation_detected = False
+        pattern_matches: List[str] = []
+
+        content = response.content
+        server_id = response.server_id
+
+        # Check server reputation
+        server_rep = self._server_reputation.get(server_id, 50)
+        if server_rep < self._min_server_reputation:
+            violations.append("low_server_reputation")
+
+        # Scan for sampling-specific attack patterns
+        for entry in self.SAMPLING_ATTACK_PATTERNS:
+            name: str = entry["name"]
+            attack_type: str = entry["type"]
+            pattern: re.Pattern[str] = entry["pattern"]
+            if pattern.search(content):
+                pattern_matches.append(name)
+                # Embed attack type so recommendation logic can match by type substring
+                violations.append(f"sampling_{attack_type}_{name}")
+                if attack_type == "resource_drain":
+                    resource_drain_detected = True
+                elif attack_type == "conversation_hijack":
+                    conversation_hijack_detected = True
+                elif attack_type == "covert_tool_invocation":
+                    covert_tool_invocation_detected = True
+
+        # Also apply general command-injection scan to the response text
+        injection_check = self._detect_injection(content[:2000])
+        if injection_check["detected"]:
+            violations.extend(f"sampling_cmd_{p}" for p in injection_check["patterns"])
+
+        # Degrade server reputation on detected attack
+        if violations and server_id:
+            current_rep = self._server_reputation.get(server_id, 50)
+            self._server_reputation[server_id] = max(0, current_rep - len(violations) * 10)
+            current_violations = self._server_violations.get(server_id, 0)
+            self._server_violations[server_id] = current_violations + len(violations)
+
+        blocked = (
+            resource_drain_detected
+            or conversation_hijack_detected
+            or covert_tool_invocation_detected
+            or (self._strict_mode and len(violations) > 0)
+        )
+
+        return MCPSecurityResult(
+            allowed=not blocked,
+            reason=(
+                f"Sampling response blocked: {', '.join(violations[:3])}"
+                if blocked
+                else "Sampling response validated"
+            ),
+            violations=violations,
+            request_id=req_id,
+            sampling_analysis=MCPSamplingAnalysis(
+                resource_drain_detected=resource_drain_detected,
+                conversation_hijack_detected=conversation_hijack_detected,
+                covert_tool_invocation_detected=covert_tool_invocation_detected,
+                pattern_matches=pattern_matches,
+            ),
+            recommendations=self._generate_recommendations(violations, "sampling"),
+        )
+
     def register_trusted_server(self, server: MCPServerIdentity, tools: List[MCPToolDefinition]) -> None:
         self._register_server(server, tools, 90)
 
@@ -714,19 +865,27 @@ class MCPSecurityGuard:
                 recommendations.append("Configure OAuth domain allowlist")
             if any("malicious" in v for v in violations):
                 recommendations.append("Block suspicious servers and review server sources")
-        else:
+        elif context == "tool_call":
             if any("injection" in v for v in violations):
                 recommendations.append("Sanitize tool parameters before execution")
             if any("reputation" in v for v in violations):
                 recommendations.append("Only use tools from high-reputation servers")
             if any("not_registered" in v for v in violations):
                 recommendations.append("Register tools before allowing execution")
+        else:
+            if any("resource_drain" in v for v in violations):
+                recommendations.append("Block this MCP server — sampling response contains resource exhaustion directives (Unit42/Blueinfy Feb 2026)")
+            if any("conversation_hijack" in v for v in violations):
+                recommendations.append("Block this MCP server — sampling response attempts conversation hijacking via role injection")
+            if any("covert_tool_invocation" in v for v in violations):
+                recommendations.append("Block this MCP server — sampling response embeds covert tool-call syntax")
 
         if not recommendations:
-            recommendations.append(
-                "Server registration validated successfully"
-                if context == "registration"
-                else "Tool call validated successfully"
-            )
+            if context == "registration":
+                recommendations.append("Server registration validated successfully")
+            elif context == "tool_call":
+                recommendations.append("Tool call validated successfully")
+            else:
+                recommendations.append("Sampling response validated successfully")
 
         return recommendations

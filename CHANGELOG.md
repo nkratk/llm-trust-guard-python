@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0 (2026-04-24)
+
+### Added — MCP Sampling Attack Detection (parity with npm 4.20.0)
+
+`MCPSecurityGuard.validate_sampling_response()` closes the MCP sampling channel gap, tied to published Unit42 + Blueinfy Feb 2026 research.
+
+Three attack vectors detected:
+
+- **Resource drain** (`sd_call_again`, `sd_loop_until`, `sd_do_not_stop`, `sd_n_times`, `sd_exhaust_resources`): Loop/repetition directives hidden in sampling responses to DoS the agent runtime
+- **Conversation hijacking** (`sd_fake_user_turn`, `sd_fake_assistant_turn`, `sd_role_json`, `sd_system_xml`, `sd_from_now_on`, `sd_new_instructions`, `sd_ignore_previous`): Fake turn injection, JSON role fields, XML role tags, and system-prompt override phrases
+- **Covert tool invocation** (`sd_anthropic_tool_xml`, `sd_tool_result_xml`, `sd_openai_tool_call`, `sd_bracket_tool_call`, `sd_double_brace_call`, `sd_invoke_name_attr`): Tool-call syntax in plain-text sampling responses across Anthropic, OpenAI, and bracket formats
+
+New exports: `MCPSamplingResponse`, `MCPSamplingAnalysis` dataclasses.
+
+Server reputation degrades automatically on sampling attack detection.
+
+### Tests
+
+- +6 sampling attack tests (resource drain, conversation hijack ×2, covert tool invocation, reputation degradation, clean FP)
+- **All 693 tests pass** (was 687), zero regressions
+
+### Stats
+- 34 guards, 693 tests, zero dependencies
+
 ## 0.9.1 (2026-04-23)
 
 ### Added — Measured Performance

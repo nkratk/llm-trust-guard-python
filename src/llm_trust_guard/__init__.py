@@ -32,7 +32,7 @@ from llm_trust_guard.guards.tool_chain_validator import ToolChainValidator, Tool
 from llm_trust_guard.guards.agent_communication_guard import AgentCommunicationGuard, AgentCommunicationGuardConfig
 from llm_trust_guard.guards.trust_exploitation_guard import TrustExploitationGuard, TrustExploitationResult
 from llm_trust_guard.guards.autonomy_escalation_guard import AutonomyEscalationGuard, AutonomyEscalationResult
-from llm_trust_guard.guards.mcp_security_guard import MCPSecurityGuard, MCPSecurityResult, MCPToolCall, MCPServerIdentity
+from llm_trust_guard.guards.mcp_security_guard import MCPSecurityGuard, MCPSecurityResult, MCPToolCall, MCPServerIdentity, MCPSamplingResponse, MCPSamplingAnalysis
 from llm_trust_guard.guards.code_execution_guard import CodeExecutionGuard, CodeAnalysisResult
 
 # Data Guards
@@ -63,7 +63,7 @@ from llm_trust_guard.integrations.fastapi_integration import TrustGuardMiddlewar
 from llm_trust_guard.integrations.langchain_integration import TrustGuardLangChain, TrustGuardViolationError, create_input_validator, create_output_filter
 from llm_trust_guard.integrations.openai_integration import SecureOpenAI, OpenAISecurityError, create_message_validator, wrap_openai_client
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 __all__ = [
     # Input Guards
@@ -92,6 +92,7 @@ __all__ = [
     "TrustExploitationGuard", "TrustExploitationResult",
     "AutonomyEscalationGuard", "AutonomyEscalationResult",
     "MCPSecurityGuard", "MCPSecurityResult", "MCPToolCall", "MCPServerIdentity",
+    "MCPSamplingResponse", "MCPSamplingAnalysis",
     "CodeExecutionGuard", "CodeAnalysisResult",
     # Data
     "MemoryGuard", "MemoryGuardResult",
