@@ -14,12 +14,15 @@ Also available as an [npm package](https://www.npmjs.com/package/llm-trust-guard
 This package is your **first line of defense** — like a WAF (Web Application Firewall) for LLM applications. It sits in the orchestration layer and catches known attack patterns before they reach the LLM and after the LLM responds.
 
 ### What it catches well
+
+Per-category detection rates below are measured against the package's curated unit-test suite (representative attack samples per category). On broader held-out corpora these rates are typically lower — see [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md) (in the npm repo) for measured detection on attack corpora and [Known limitations](#what-it-catches-partially-50-80-detection) below.
+
 - Known prompt injection phrases (170+ patterns, 11 languages)
 - Encoding bypass attacks (9 formats: Base64, URL, Unicode, Hex, HTML, ROT13, Octal, Base32, mixed)
-- Policy Puppetry attacks (JSON/INI/XML/YAML-formatted injection) — 100% detection
-- Role-play/persona attacks (translator trick, academic pretext, emotional manipulation) — 100% detection
-- PAP/persuasion attacks (authority, urgency, emotional manipulation) — 100% detection
-- Multilingual injection (10 languages) — 100% detection
+- Policy Puppetry attacks (JSON/INI/XML/YAML-formatted injection) — 100% on unit tests
+- Role-play/persona attacks (translator trick, academic pretext, emotional manipulation) — 100% on unit tests
+- PAP/persuasion attacks (authority, urgency, emotional manipulation) — 100% on unit tests
+- Multilingual injection (10 languages) — 100% on unit tests
 - Homoglyph attacks (Cyrillic/Greek character substitution) — normalized and detected
 - PII and secret leakage in outputs
 - Tool hallucination, RBAC bypass, multi-tenant violations
@@ -219,7 +222,7 @@ tool_result = guard.validate_tool_result("search", tool_output)
 
 ## Measured Performance
 
-v0.10.0 shares the regex detection family with llm-trust-guard npm v4.20.0. The benchmark below was run on the v0.9.0 / npm v4.19.0 release; v0.10.0 added MCP Sampling attack detection (see [CHANGELOG.md](CHANGELOG.md)) — orthogonal to the Sanitizer+Encoder pipelines below, so numbers apply unchanged. Full methodology, confidence intervals, hand-adjudication labels, and reproducibility scripts live in the npm repo: [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md).
+v0.10.1 shares the regex detection family with llm-trust-guard npm v4.20.1. The benchmark below was run on the v0.9.0 / npm v4.19.0 release; v0.10.0 added MCP Sampling attack detection (see [CHANGELOG.md](CHANGELOG.md)) — orthogonal to the Sanitizer+Encoder pipelines below, so numbers apply unchanged. v0.10.1 / 4.20.1 are documentation-only patches with no detection changes. Full methodology, confidence intervals, hand-adjudication labels, and reproducibility scripts live in the npm repo: [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md).
 
 **Attack detection on prior-published corpora** (Giskard n=35, Compass CTF Chinese n=11): detection rate has not moved from v4.13.5 on the Sanitizer+Encoder pipeline — 80.00% and 9.09% respectively, identical to v4.13.5. Six minor releases of pattern additions targeted different attack classes (indirect injection, tool-result validation, memory persistence, multi-agent trust) that these direct-text jailbreak corpora do not exercise. Small sample sizes mean "no evidence of improvement," not "proof of no improvement."
 

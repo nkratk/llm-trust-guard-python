@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.1 (2026-04-24)
+
+### Changed — Documentation accuracy (parity with npm 4.20.1)
+
+- **README**: Fixed "31 → 34 security guards" inconsistency (was contradicting the All 34 Guards table and `pyproject.toml`)
+- **README**: Removed unmeasured "<5ms latency" assertion from intro
+- **README**: Removed unmeasured "~97% on curated benchmarks" framing from "What it catches well"
+- **README**: Qualified the four "100% detection" claims (Policy Puppetry, Role-play, PAP, Multilingual) as "100% on unit tests" with a section preface explaining that these are unit-test rates, not corpus measurements. Broader corpus measurements live in the npm repo's [RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md)
+- **README**: Updated version-pairing line to v0.10.1 / npm v4.20.1; benchmark numbers from v0.9.0 / npm v4.19.0 still apply (orthogonal MCP Sampling addition)
+
+No code changes. Same 693 tests pass.
+
 ## 0.10.0 (2026-04-24)
 
 ### Added — MCP Sampling Attack Detection (parity with npm 4.20.0)
