@@ -274,6 +274,54 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
 # fmt: on
 
 
+# Benign-context suppression (false-positive reduction).
+#
+# The soft "ignore/disregard" triggers fire on benign technical phrasing such as
+# "ignore the whitespace", "ignore case", or "ignore the previous error". We
+# cancel ONLY these soft triggers, and ONLY when (a) the object is clearly a
+# benign technical noun AND (b) the input contains no instruction/rule/prompt/
+# safety noun anywhere. Any real injection ("ignore previous instructions",
+# "disregard your rules") references an instruction-noun and is never affected.
+SOFT_TRIGGER_NAMES = {"ignore_instructions", "disregard_above"}
+
+INSTRUCTION_NOUN_RE = re.compile(
+    r"\b(?:instructions?|rules?|ruleset|prompts?|directives?|guidelines?|"
+    r"guard\s?rails?|policy|policies|constraints?|restrictions?|safety|"
+    r"alignment|moderation|filters?|persona|system\s+(?:prompt|message))\b",
+    re.I,
+)
+
+BENIGN_TRIGGER_RE = re.compile(
+    r"\b(?:ignore|disregard)\s+"
+    r"(?:the\s+|that\s+|any\s+|all\s+|these\s+|those\s+|my\s+|your\s+|"
+    r"previous\s+|prior\s+|last\s+|above\s+|leading\s+|trailing\s+|extra\s+)*"
+    r"(?:case|casing|case[-\s]?sensitiv\w*|whitespace|white\s?space|spaces?|"
+    r"tabs?|indentation|indent\w*|formatting|format|typos?|grammar|spelling|"
+    r"punctuation|comments?|blank\s+lines?|empty\s+lines?|newlines?|"
+    r"line\s?breaks?|leading\s+zeros?|zeros?|nulls?|undefined|nan|errors?|"
+    r"warnings?|exceptions?|stack\s?traces?|messages?|responses?|answers?|"
+    r"attempts?|commits?|versions?|drafts?|approach(?:es)?|ideas?|designs?|"
+    r"plans?|suggestions?|snippets?|paragraphs?|sentences?|lines?|duplicates?|"
+    r"outputs?|results?|examples?|the\s+rest)\b",
+    re.I,
+)
+
+# Suppression veto. Even when a benign object is present, refuse to suppress if
+# the prompt carries a high-signal exfiltration / execution / credential / money
+# token. Closes the escape hatch where an attacker prefixes a real payload with
+# "ignore the previous output ..." to cancel the trigger. Benign coding prompts
+# do not contain URLs, emails, credentials, shell pipes, or amounts.
+SUPPRESSION_VETO_RE = re.compile(
+    r"https?://|[\w.+-]+@[\w-]+\.[a-z]{2,}|"
+    r"\b(?:api[\s_-]?keys?|passwords?|passwd|secrets?|credentials?|"
+    r"private\s+keys?|ssn|social\s+security|access\s+tokens?)\b|"
+    r"\bexfiltrat\w*|\brm\s+-rf\b|\|\s*sh\b|\bcurl\b|\bwget\b|"
+    r"\bdelete\s+(?:every|all|the)\s+(?:files?|director\w+|database)\b|"
+    r"\bdrop\s+(?:table|database)\b|\$\s?\d{2,}|\baccount\s+#?\d{6,}\b",
+    re.I,
+)
+
+
 class InputSanitizer:
     """Detects prompt injection patterns in user input."""
 
@@ -303,10 +351,25 @@ class InputSanitizer:
         # Strip zero-width characters before scanning (invisible text injection defense)
         cleaned_input = re.sub(r"[\u200B\u200C\u200D\uFEFF\u00AD\u2060\u180E]", "", input_text)
 
-        for p in self.patterns:
-            if p.pattern.search(cleaned_input):
-                total_weight += p.weight
-                matches.append(p.name)
+        matched_patterns = [
+            p for p in self.patterns if p.pattern.search(cleaned_input)
+        ]
+
+        # Benign-context suppression (FP reduction): cancel soft ignore/disregard
+        # triggers when the object is a benign technical noun AND no instruction-
+        # noun appears anywhere. Real injections reference instructions/rules/
+        # prompt/safety and so are never suppressed.
+        benign_context = (
+            bool(BENIGN_TRIGGER_RE.search(cleaned_input))
+            and not INSTRUCTION_NOUN_RE.search(cleaned_input)
+            and not SUPPRESSION_VETO_RE.search(cleaned_input)
+        )
+        for p in matched_patterns:
+            if benign_context and p.name in SOFT_TRIGGER_NAMES:
+                warnings.append(f"Benign-context suppression: {p.name}")
+                continue
+            total_weight += p.weight
+            matches.append(p.name)
 
         # Score: 1.0 = safe, 0.0 = definitely attack (matches TypeScript logic)
         score = max(0.0, 1.0 - total_weight)

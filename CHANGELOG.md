@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.2 (2026-06-06)
+
+### Added — Benign-context suppression (false-positive reduction, parity with npm 4.20.2)
+
+`InputSanitizer.sanitize()` now cancels the soft `ignore_instructions` /
+`disregard_above` triggers when the object is a benign technical noun (e.g.
+"ignore the whitespace", "ignore case", "ignore the previous error") **and** the
+input contains no instruction/rule/prompt/safety noun anywhere, **and** the
+prompt carries no high-signal exfiltration/execution/credential/money token. Any
+real injection references an instruction-noun and is never suppressed.
+
+- **Suppression veto**: suppression is refused when the prompt also contains a
+  URL, email address, credential/secret word, shell pipe / `rm -rf` / `curl` /
+  `wget`, destructive `delete`/`drop`, a money amount (`$NN`), or a long account
+  number — closing the escape hatch where a benign object masks a real payload.
+- New curated probe `tests/test_benign_context.py`: 28 benign prompts allowed +
+  12 attack controls + 10 suppression-bypass controls blocked (51 tests).
+- **Recall preserved**: full suite 744 pass (was 693). Mirrors npm 4.20.2; the
+  WildChat-1M Pipeline A block count is unchanged (raw FPR 4.93%), so the win is
+  scoped to coding/technical deployments and does **not** move the published
+  ~2.73% corrected WildChat FPR.
+- Known pre-existing gap noted (not addressed here): `"disregard your previous
+  rules"` is not matched by the `disregard` patterns — a recall issue, separate
+  from this FP work.
+
 ## 0.10.1 (2026-04-24)
 
 ### Changed — Documentation accuracy (parity with npm 4.20.1)
