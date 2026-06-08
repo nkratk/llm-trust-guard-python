@@ -47,3 +47,9 @@ exclude = ["tests/adversarial"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Coverage floor enforced by scripts/verify.sh (G4). Current measured coverage is
+# ~74%; the floor is set below that with margin so it catches real regressions
+# without flaking across Python 3.9–3.13. Raise it as coverage improves.
+[tool.coverage.report]
+fail_under = 70

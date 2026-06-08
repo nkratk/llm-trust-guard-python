@@ -78,5 +78,28 @@ jobs:
       - name: Run security audit
         run: pip-audit || true
 
+  verify:
+    name: Verification gate (eval-gated, see VERIFICATION.md)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code (with tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags present so the G6 "new code has tests" gate runs
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" ruff
+
+      - name: Run verification pipeline (G1–G8)
+        run: bash scripts/verify.sh
+
   # Publishing is handled by release.yml (triggered on GitHub Release)
   # Uses PyPI Trusted Publishing (OIDC) — no token required

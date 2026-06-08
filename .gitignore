@@ -8,3 +8,7 @@ __pycache__/
 .DS_Store
 venv/
 .venv/
+.coverage
+coverage.lcov
+htmlcov/
+.pytest_cache/
