@@ -307,6 +307,7 @@ class TestAdversarialBenchmark:
             )
 
             total_caught = 0
+            by_cat = {}
             for item in all_attacks:
                 payload = item["payload"]
                 category = item["category"]
@@ -315,6 +316,7 @@ class TestAdversarialBenchmark:
                 t_blocked = not tool_guard.validate_result("test", payload).allowed if category == "tool_result" else False
                 if s_blocked or e_blocked or t_blocked:
                     total_caught += 1
+                    by_cat[category] = by_cat.get(category, 0) + 1
 
             overall_rate = (total_caught / len(all_attacks)) * 100
 
@@ -327,5 +329,22 @@ class TestAdversarialBenchmark:
             print(f"  OVERALL DETECTION RATE: {overall_rate:.1f}%")
             print("========================================\n")
 
-            # We expect at least 60% overall — regex-only is limited
+            # We expect at least 60% overall — regex-only is limited (loose smoke floor)
             assert overall_rate >= 60
+
+            # Two-sided RECALL ratchet: detection must not drop below the locked
+            # baseline (recall-baseline.json). Paired with the npm WildChat FP baseline,
+            # this fails on EITHER a recall drop here OR an FP rise there.
+            import json as _json
+            import os as _os
+            _bl = _json.load(
+                open(_os.path.join(_os.path.dirname(__file__), "recall-baseline.json"))
+            )
+            for _cat, _floor in _bl["caught"].items():
+                assert by_cat.get(_cat, 0) >= _floor, (
+                    f"Recall regression in '{_cat}': {by_cat.get(_cat, 0)} caught "
+                    f"vs locked {_floor}. Update recall-baseline.json with a RESULTS justification."
+                )
+            assert total_caught >= _bl["overall"]["caught"], (
+                f"Overall recall regression: {total_caught} caught vs locked {_bl['overall']['caught']}."
+            )

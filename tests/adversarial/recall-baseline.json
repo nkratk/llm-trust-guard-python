@@ -1,0 +1,29 @@
+{
+  "note": "Locked attack-detection (recall) counts on the in-repo adversarial benchmark payloads, measured with the Aggregate Report logic (sanitizer or encoder or tool_guard-for-tool_result). RECALL half of the two-sided regression gate. A drop below any 'caught' value fails the build. Mirrors the npm recall-baseline.json. Raise (never lower) only with a measured RESULTS justification.",
+  "lockedAt": "v0.10.2",
+  "caught": {
+    "direct": 10,
+    "indirect": 8,
+    "roleplay": 7,
+    "encoding": 6,
+    "policy": 6,
+    "pap": 6,
+    "splitting": 2,
+    "prefix": 3,
+    "multilingual": 10,
+    "tool_result": 5
+  },
+  "totals": {
+    "direct": 10,
+    "indirect": 8,
+    "roleplay": 7,
+    "encoding": 7,
+    "policy": 6,
+    "pap": 6,
+    "splitting": 3,
+    "prefix": 3,
+    "multilingual": 10,
+    "tool_result": 5
+  },
+  "overall": { "caught": 63, "total": 65 }
+}

@@ -26,8 +26,26 @@ soft_gate "G2 lint (ruff)" "$PY" -m ruff check src
 # The suite includes the curated benign probe and the adversarial bypass probe
 # (tests/test_benign_context.py). The 10k WildChat fixture lives only in the npm
 # repo; Python regression is guarded by the corpus-free probes.
-gate "G3+G4+G5 tests + coverage + regression" \
-  "$PY" -m pytest --ignore=tests/adversarial --cov=llm_trust_guard --cov-report=term-missing -q
+gate "G3+G4 tests + coverage" \
+  "$PY" -m pytest --ignore=tests/adversarial --cov=llm_trust_guard \
+  --cov-report=term-missing --cov-report=xml -q
+
+# ── G5: two-sided regression — recall ratchet on the adversarial benchmark
+# (excluded from the default run above, so run it explicitly here) plus the
+# corpus-free benign/bypass probes already covered by G3.
+gate "G5 recall ratchet (recall-baseline.json)" \
+  "$PY" -m pytest tests/adversarial/test_adversarial_benchmark.py -q
+
+# ── G9: patch coverage — CHANGED src lines (since last tag) must be covered.
+# Enforced in CI; degrades to a skip locally if diff-cover isn't installed.
+patch_cov() {
+  "$PY" -m diff_cover.diff_cover_tool --version >/dev/null 2>&1 || {
+    echo "  diff-cover not installed — skipping locally (CI enforces). pip install diff-cover"; return 0; }
+  local tag; tag=$(git describe --tags --abbrev=0 2>/dev/null) || { echo "  no tag — skipping"; return 0; }
+  [ -f coverage.xml ] || { echo "  coverage.xml missing"; return 1; }
+  "$PY" -m diff_cover.diff_cover_tool coverage.xml --compare-branch "$tag" --fail-under "${PATCH_COV_MIN:-80}"
+}
+gate "G9 patch coverage (changed src lines >=${PATCH_COV_MIN:-80}%)" patch_cov
 
 # ── G6: new code must ship with tests (hard gate; override ALLOW_NO_TESTS=1)
 gate "G6 new code has tests" bash -c '

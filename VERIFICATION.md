@@ -30,16 +30,20 @@ Enforced in **two places**:
 | G2 | Lint (`ruff check src`, non-blocking) | style | quality |
 | G3 | Full unit suite (`pytest --ignore=tests/adversarial`) | behavior intact | "all tests pass" |
 | G4 | Coverage floor (`fail_under` in `pyproject.toml`, currently 70%) | new code is exercised | "new changes have test cases" |
-| G5 | **Regression**: curated benign probe = 0 blocked; adversarial bypass probe = 0 leaked | no FP/FN regression | **"not breaking the previous version"** |
+| G5 | **Two-sided regression**: (a) recall — per-category detection ≥ `recall-baseline.json`; (b) curated benign = 0 blocked, adversarial bypass = 0 leaked; (c) **TS↔Python parity** — this port reproduces `parity-vectors.json` | no recall drop, no port drift | **"not breaking the previous version"** |
 | G6 | **New-tests gate**: `src/` changed since last tag ⇒ `tests/` changed too (override `ALLOW_NO_TESTS=1`) | every change is tested | **"new changes should have test cases"** |
 | G7 | **CHANGELOG gate**: top version == `pyproject.toml` version | release is documented | **"consumers know what changed"** |
 | G8 | **Results gate**: `tests/adversarial/RESULTS-v<version>.md` exists | claims are published | **"publish the basis for claims"** |
+| G9 | **Patch coverage**: changed `src/` lines since last tag must be ≥80% covered (`diff-cover` on `coverage.xml`) | new code is *actually* tested | **"new changes should have test cases"** |
 
 **WildChat note (G5).** The 10,000-prompt WildChat-1M fixture lives only in the npm
 `llm-trust-guard` repo, to avoid duplicating ~10 MB across packages. This package's
 sanitizer logic is a line-for-line port, so the npm WildChat regression (block count
-≤ baseline) covers it; here, regression is guarded by the corpus-free curated benign
-probe and adversarial bypass probe in `tests/test_benign_context.py`.
+≤ baseline) covers it; here, regression is guarded by the **recall ratchet**
+(`tests/adversarial/test_adversarial_benchmark.py` vs `recall-baseline.json`), the
+corpus-free curated benign + adversarial bypass probes (`tests/test_benign_context.py`),
+and the **TS↔Python parity gate** (`tests/test_parity.py`) that fails the moment this
+port diverges from the npm verdicts.
 
 ## How each recurring concern is enforced (not remembered)
 

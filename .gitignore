@@ -10,5 +10,6 @@ venv/
 .venv/
 .coverage
 coverage.lcov
+coverage.xml
 htmlcov/
 .pytest_cache/
