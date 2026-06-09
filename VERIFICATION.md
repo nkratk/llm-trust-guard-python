@@ -35,6 +35,16 @@ Enforced in **two places**:
 | G7 | **CHANGELOG gate**: top version == `pyproject.toml` version | release is documented | **"consumers know what changed"** |
 | G8 | **Results gate**: `tests/adversarial/RESULTS-v<version>.md` exists | claims are published | **"publish the basis for claims"** |
 | G9 | **Patch coverage**: changed `src/` lines since last tag must be ≥80% covered (`diff-cover` on `coverage.xml`) | new code is *actually* tested | **"new changes should have test cases"** |
+| G10 | **Freshness cadence**: `freshness.json` `lastFullScan` / each `checkedAt` within `ttlDays` (180) — `scripts/check-freshness.py`, date-only/offline | staleness *blocks* a push | **"definitely verify freshness"** |
+
+### Freshness (G10 + the weekly scan)
+
+`RESEARCH_LOG.md` stays append-only (the audit trail; deleting it would remove the
+evidence, not the staleness). G10 fails the push once any `checkedAt`/`lastFullScan` in
+`freshness.json` exceeds the TTL, so you must re-scan and bump the dates before pushing.
+The weekly `.github/workflows/freshness.yml` cron additionally checks source link-rot and
+opens a *Freshness re-check due* issue when stale/dead — the **relevance judgment of new
+research is the human/LLM step** that issue triggers, not a script decision.
 
 **WildChat note (G5).** The 10,000-prompt WildChat-1M fixture lives only in the npm
 `llm-trust-guard` repo, to avoid duplicating ~10 MB across packages. This package's

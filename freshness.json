@@ -1,0 +1,37 @@
+{
+  "note": "Freshness manifest for the verification pipeline (G10). 'checkedAt' is when a human/LLM last validated the topic against the current state of the field; the gate fails once any checkedAt or lastFullScan is older than ttlDays, forcing a re-scan before more pushes. Judging relevance of NEW research is human/LLM work surfaced by the weekly freshness workflow — not decided by a script. Keep RESEARCH_LOG.md (append-only) as the audit trail.",
+  "ttlDays": 180,
+  "lastFullScan": "2026-06-08",
+  "tracked": [
+    {
+      "topic": "OWASP Top 10 for LLM Applications",
+      "pinnedVersion": "2025",
+      "source": "https://genai.owasp.org/llm-top-10/",
+      "checkedAt": "2026-06-08"
+    },
+    {
+      "topic": "OWASP Top 10 for Agentic Applications",
+      "pinnedVersion": "2026",
+      "source": "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+      "checkedAt": "2026-06-08"
+    },
+    {
+      "topic": "Prompt-injection / agentic benchmarks",
+      "pinnedVersion": "AgentDojo (NeurIPS'24) + InjecAgent",
+      "source": "https://openreview.net/forum?id=m1YYAQjO3w",
+      "checkedAt": "2026-06-08"
+    },
+    {
+      "topic": "MCP sampling attacks",
+      "pinnedVersion": "Unit42 + Blueinfy, Feb 2026 / ChatInject",
+      "source": "https://arxiv.org/pdf/2509.22830",
+      "checkedAt": "2026-06-08"
+    },
+    {
+      "topic": "Alignment-aware detection / FP reduction",
+      "pinnedVersion": "AlignSentinel (arXiv 2602.13597)",
+      "source": "https://arxiv.org/pdf/2602.13597",
+      "checkedAt": "2026-06-08"
+    }
+  ]
+}
