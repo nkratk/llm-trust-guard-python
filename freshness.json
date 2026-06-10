@@ -1,7 +1,7 @@
 {
   "note": "Freshness manifest for the verification pipeline (G10). 'checkedAt' is when a human/LLM last validated the topic against the current state of the field; the gate fails once any checkedAt or lastFullScan is older than ttlDays, forcing a re-scan before more pushes. Judging relevance of NEW research is human/LLM work surfaced by the weekly freshness workflow — not decided by a script. Keep RESEARCH_LOG.md (append-only) as the audit trail.",
   "ttlDays": 180,
-  "lastFullScan": "2026-06-08",
+  "lastFullScan": "2026-06-09",
   "tracked": [
     {
       "topic": "OWASP Top 10 for LLM Applications",
@@ -32,6 +32,12 @@
       "pinnedVersion": "AlignSentinel (arXiv 2602.13597)",
       "source": "https://arxiv.org/pdf/2602.13597",
       "checkedAt": "2026-06-08"
+    },
+    {
+      "topic": "Code static-analysis tooling (AST parsers)",
+      "pinnedVersion": "Python stdlib ast; JS: acorn / oxc (pluggable adapter, deferred)",
+      "source": "https://oxc.rs/docs/learn/architecture/parser",
+      "checkedAt": "2026-06-09"
     }
   ]
 }

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.3 (2026-06-09)
+
+### Added — AST-based sandbox-escape detection (CodeExecutionGuard, Python only)
+
+`CodeExecutionGuard.analyze()` now runs a Python `ast` pass (stdlib, zero new deps)
+on top of the existing regex scan. It catches sandbox-escape gadget chains and
+dynamic imports that regex provably cannot — e.g.
+`().__class__.__bases__[0].__subclasses__()`, `obj.__globals__[...]`,
+`__import__("os").system(...)`.
+
+- **Measured**: escape-gadget probe **0/5 → 5/5 blocked**; benign probe **0/5 → 0/5**
+  (no false-positive regression); 15 new tests + the existing 10 pass.
+- **Strictly additive**: the ast pass only adds findings the regex missed; unparseable
+  code falls back to the regex scan; non-Python code is unaffected (language-gated).
+- **Intentional divergence from the npm port**: Python has a stdlib parser (`ast`); JS
+  does not, so the npm package keeps regex and will take a pluggable parser-adapter
+  route (acorn/oxc) instead of bundling a parser. See RESEARCH_LOG.md.
+- This is detection only — it does **not** add a runtime sandbox (that stays a host
+  concern). See `tests/adversarial/RESULTS-v0.10.3.md`.
+
 ## 0.10.2 (2026-06-06)
 
 ### Added — Benign-context suppression (false-positive reduction, parity with npm 4.20.2)

@@ -19,6 +19,7 @@ Protection Capabilities:
 
 from __future__ import annotations
 
+import ast
 import re
 import time
 from dataclasses import dataclass, field
@@ -158,6 +159,50 @@ _DEFAULT_BLOCKED_IMPORTS: Dict[str, List[str]] = {
     ],
 }
 
+# AST-based detection (Python only). Catches sandbox-escape gadget chains and
+# dynamic imports that regex provably cannot, e.g.
+#   ().__class__.__bases__[0].__subclasses__()      # CPython jailbreak gadget
+#   __import__("os").system("id")                   # dynamic import + exec
+# These dunders are high-signal and rarely appear in benign code, so the pass is
+# layered ON TOP of the regex pass (strictly additive — it can only add findings,
+# never remove them; no false-positive regression, existing behavior preserved).
+# Python's stdlib `ast` keeps this zero-dependency; the npm port can't use a
+# stdlib parser, so it takes a pluggable parser-adapter route instead.
+_AST_ESCAPE_DUNDERS = frozenset({
+    "__subclasses__", "__bases__", "__mro__", "__base__",
+    "__globals__", "__builtins__", "__import__",
+    "__getattribute__", "__reduce__", "__reduce_ex__", "__code__", "__closure__",
+})
+
+
+def _ast_escape_findings(code: str):
+    """Return [(name, severity), ...] for Python sandbox-escape gadgets, or None
+    if the code does not parse (caller keeps the regex-only result)."""
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return None
+    out: List = []
+    seen: set = set()
+
+    def add(name: str, severity: int) -> None:
+        if name not in seen:
+            seen.add(name)
+            out.append((name, severity))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _AST_ESCAPE_DUNDERS:
+            add(f"ast_sandbox_escape_{node.attr}", 60)
+        elif isinstance(node, ast.Name) and node.id in _AST_ESCAPE_DUNDERS:
+            add(f"ast_sandbox_escape_{node.id}", 55)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "__import__"
+        ):
+            add("ast_dynamic_import", 55)
+    return out
+
 
 class CodeExecutionGuard:
     """Validates and sandboxes agent-generated code before execution."""
@@ -245,6 +290,18 @@ class CodeExecutionGuard:
                     dangerous_imports.append(dp.name)
                 if any(k in dp.name for k in ("eval", "exec", "compile")):
                     dangerous_functions.append(dp.name)
+
+        # AST pass (Python only): sandbox-escape gadgets regex cannot see. Strictly
+        # additive — only adds findings the regex missed.
+        if normalized_lang == "python":
+            ast_findings = _ast_escape_findings(code)
+            if ast_findings:
+                for name, sev in ast_findings:
+                    violation = f"dangerous_pattern_{name}"
+                    if violation not in violations:
+                        violations.append(violation)
+                        risk_score += sev
+                        dangerous_functions.append(name)
 
         # Check blocked imports
         all_blocked = list(self._config.blocked_imports) + list(_DEFAULT_BLOCKED_IMPORTS.get(normalized_lang, []))
