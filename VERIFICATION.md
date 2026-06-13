@@ -36,6 +36,7 @@ Enforced in **two places**:
 | G8 | **Results gate**: `tests/adversarial/RESULTS-v<version>.md` exists | claims are published | **"publish the basis for claims"** |
 | G9 | **Patch coverage**: changed `src/` lines since last tag must be ≥80% covered (`diff-cover` on `coverage.xml`) | new code is *actually* tested | **"new changes should have test cases"** |
 | G10 | **Freshness cadence**: `freshness.json` `lastFullScan` / each `checkedAt` within `ttlDays` (180) — `scripts/check-freshness.py`, date-only/offline | staleness *blocks* a push | **"definitely verify freshness"** |
+| G11 | **README documents API changes**: `src/llm_trust_guard/__init__.py` exports changed since last tag ⇒ `README.md` changed too (override `ALLOW_NO_README_UPDATE=1`) | docs can't drift behind the public API | **"keep README current with new changes"** |
 
 ### Freshness (G10 + the weekly scan)
 

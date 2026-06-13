@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.4 (2026-06-12)
+
+### Docs — document AST sandbox-escape detection; add README-sync gate (G11)
+
+- **README**: documented the stdlib-`ast` sandbox-escape detection in
+  `CodeExecutionGuard` (0.10.3) with an example. The README previously did not
+  mention it.
+- **Verification (G11)**: new gate fails the build when public exports
+  (`src/llm_trust_guard/__init__.py`) change since the last tag but `README.md`
+  does not (override `ALLOW_NO_README_UPDATE=1`). See VERIFICATION.md.
+
+No code/behavior change.
+
 ## 0.10.3 (2026-06-09)
 
 ### Added — AST-based sandbox-escape detection (CodeExecutionGuard, Python only)

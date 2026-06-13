@@ -164,7 +164,7 @@ tool_result = guard.validate_tool_result("search", tool_output)
 | AutonomyEscalationGuard | Unauthorized autonomy expansion | Capability tracking |
 | MemoryGuard | Memory poisoning prevention | Injection patterns + HMAC |
 | StatePersistenceGuard | State corruption prevention | Integrity hashing |
-| CodeExecutionGuard | Unsafe code execution | Static analysis |
+| CodeExecutionGuard | Unsafe code execution | Static analysis (regex + Python AST sandbox-escape) |
 | RAGGuard | RAG document poisoning | Source trust + injection |
 | MCPSecurityGuard | MCP tool shadowing, rug pull, SSRF | Registration + mutation hash |
 | CircuitBreaker | Cascading failure prevention | State machine |
@@ -172,6 +172,22 @@ tool_result = guard.validate_tool_result("search", tool_output)
 | ExternalDataGuard | External data validation before LLM context | Source trust + injection + secret scan |
 | AgentSkillGuard | Malicious plugin/tool detection (OpenClaw) | Backdoor signatures + typosquatting |
 | SessionIntegrityGuard | Session hijacking, permission escalation | Binding + sequence + timeout |
+
+`CodeExecutionGuard` analyzes Python with the stdlib `ast` module (zero
+dependencies) layered on the regex pass, catching sandbox-escape gadget chains
+that regex cannot — e.g. `().__class__.__bases__[0].__subclasses__()` or
+`__import__('os').system(...)`:
+
+```python
+from llm_trust_guard import CodeExecutionGuard
+
+guard = CodeExecutionGuard()
+guard.analyze("().__class__.__bases__[0].__subclasses__()", "python").allowed  # False
+guard.analyze("print('hello world')", "python").allowed                       # True
+```
+
+(The npm package, lacking a stdlib parser, exposes this via a pluggable
+`CodeAnalyzerBackend` instead — see its README.)
 
 ### Multi-Agent Guards (OWASP ASI07)
 

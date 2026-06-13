@@ -59,6 +59,21 @@ gate "G6 new code has tests" bash -c '
   fi
   echo "  ok (changed since $tag)"; exit 0'
 
+# ── G11: public API changed since last tag ⇒ README must change too
+# (closes the "docs drift" gap; override ALLOW_NO_README_UPDATE=1).
+gate "G11 README documents API changes" bash -c '
+  tag=$(git describe --tags --abbrev=0 2>/dev/null) || { echo "  no tag yet — skipping G11"; exit 0; }
+  changed=$( { git diff --name-only "$tag" --; git ls-files --others --exclude-standard; } | sort -u )
+  api=$(echo "$changed" | grep -E "^src/llm_trust_guard/__init__\.py$" || true)
+  readme=$(echo "$changed" | grep -E "^README\.md$" || true)
+  if [ -n "$api" ] && [ -z "$readme" ]; then
+    if [ "${ALLOW_NO_README_UPDATE:-0}" = "1" ]; then echo "  public API changed without README, but ALLOW_NO_README_UPDATE=1"; exit 0; fi
+    echo "  src/llm_trust_guard/__init__.py (public exports) changed since $tag but README.md did not."
+    echo "  Document the new/changed API, or re-run with ALLOW_NO_README_UPDATE=1 for a non-API tweak."
+    exit 1
+  fi
+  echo "  ok"; exit 0'
+
 # ── G7: CHANGELOG top version == pyproject version
 gate "G7 changelog matches version" bash -c '
   pv=$(grep -m1 -oE "^version = \"[0-9.]+\"" pyproject.toml | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
