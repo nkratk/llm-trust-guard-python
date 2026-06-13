@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# Strip any Claude/Anthropic co-author or "Generated with Claude Code" lines from
+# the commit message. Defense-in-depth alongside the global Claude Code settings
+# (includeCoAuthoredBy=false / attribution=""). Active via core.hooksPath=.githooks.
+#
+set -uo pipefail
+f="$1"
+[ -f "$f" ] || exit 0
+tmp="$(mktemp)"
+grep -viE '^[[:space:]]*Co-Authored-By:[[:space:]]*.*(claude|anthropic)|Generated with .*Claude Code|🤖[[:space:]]*Generated' "$f" > "$tmp" || true
+mv "$tmp" "$f"
+exit 0
