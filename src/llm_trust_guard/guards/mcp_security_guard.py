@@ -48,7 +48,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -174,6 +174,13 @@ class MCPSecurityGuardConfig:
     min_server_reputation: int = 30
     strict_mode: bool = False
     custom_injection_patterns: List[re.Pattern[str]] = field(default_factory=list)
+    # Detect full-schema poisoning: instructions hidden in parameter names /
+    # enum / default / required fields, scanned at registration time
+    # (CyberArk "Poison Everywhere", 2025).
+    detect_schema_poisoning: bool = True
+    # Detect line-jumping: a description that injects instructions into context
+    # at tools/list time (Trail of Bits, 2025).
+    detect_line_jumping: bool = True
 
 
 @dataclass
@@ -280,6 +287,8 @@ class MCPSecurityGuard:
         self._min_server_reputation = cfg.min_server_reputation
         self._strict_mode = cfg.strict_mode
         self._custom_injection_patterns = list(cfg.custom_injection_patterns)
+        self._detect_schema_poisoning_enabled = cfg.detect_schema_poisoning
+        self._detect_line_jumping_enabled = cfg.detect_line_jumping
 
         self._registered_servers: Dict[str, MCPServerIdentity] = {}
         self._registered_tools: Dict[str, MCPToolDefinition] = {}
@@ -374,6 +383,22 @@ class MCPSecurityGuard:
             if desc_injection["detected"]:
                 violations.append(f"injection_in_tool_description: {tool.name}")
                 reputation_score -= 20
+
+            # Line-jumping: description injects instructions at tools/list time,
+            # before any invocation or human approval (Trail of Bits, 2025).
+            if self._detect_line_jumping_enabled:
+                line_jump = self._detect_line_jumping(tool.description)
+                if line_jump:
+                    violations.append(f"line_jumping: {tool.name} ({', '.join(line_jump)})")
+                    reputation_score -= 30
+
+            # Full-schema poisoning: instructions hidden in parameter names /
+            # enum / default / required fields (CyberArk, 2025).
+            if self._detect_schema_poisoning_enabled:
+                fsp = self._detect_schema_poisoning(tool.parameters)
+                if fsp:
+                    violations.append(f"schema_poisoning: {tool.name} ({', '.join(fsp)})")
+                    reputation_score -= 30
 
         # Validate OAuth endpoints if present
         if oauth and self._validate_oauth_endpoints:
@@ -797,6 +822,63 @@ class MCPSecurityGuard:
                 patterns.append(pat.name)
 
         return {"detected": len(patterns) > 0, "patterns": patterns}
+
+    # Line-jumping cues: instructions a description injects pre-invocation.
+    _LINE_JUMPING_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
+        ("pre_invocation_directive", re.compile(r"\b(?:always|before (?:executing|using|calling|running|any)|as the first step|prior to|on every|each time you)\b", re.I)),
+        ("instruction_override", re.compile(r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|disregard\s+(?:the|all|previous)", re.I)),
+        ("secrecy", re.compile(r"\bdo\s+not\s+(?:tell|reveal|show|mention|inform|notify)\b|without\s+(?:telling|informing|notifying)\s+the\s+user|\bsecretly\b|\bsilently\b|\bcovertly\b", re.I)),
+        ("fake_compliance", re.compile(r"\b(?:required|mandatory|necessary)\s+(?:for|by)\s+(?:GDPR|SOC\s?2|HIPAA|PCI|ISO|compliance|audit|policy)\b", re.I)),
+        ("role_reassignment", re.compile(r"you\s+(?:are|must|should)\s+now\b|<\|(?:im_start|im_end|system|user|assistant)\|>|\[INST\]|<<SYS>>", re.I)),
+        ("embedded_action", re.compile(r"\b(?:read|send|exfiltrate|upload|post)\s+(?:the\s+)?(?:contents?\s+of\s+)?(?:~?/?\.?\w*(?:ssh|aws|env|credentials|id_rsa))", re.I)),
+    ]
+
+    def _detect_line_jumping(self, description: str) -> List[str]:
+        """Detect imperative / secrecy / fake-compliance cues in a tool description."""
+        if not description:
+            return []
+        return [name for name, pattern in self._LINE_JUMPING_PATTERNS if pattern.search(description)]
+
+    _FSP_SUSPICIOUS_KEY = re.compile(
+        r"(?:from_reading|contents_of|ignore|system_prompt|exfil|ssh|id_rsa|\.env|credentials|secret|api[_-]?key|do_not_|inject)",
+        re.I,
+    )
+    _FSP_INSTRUCTION = re.compile(
+        r"ignore\s+(?:previous|all|prior)|do\s+not\s+(?:tell|mention|reveal)|you\s+(?:are|must)\s+now|before\s+(?:executing|using|calling)|\bsecretly\b|<\|(?:im_start|system)\|>|\[INST\]",
+        re.I,
+    )
+
+    def _detect_schema_poisoning(self, parameters: Optional[Dict[str, Any]]) -> List[str]:
+        """Walk every non-description schema field for injected instructions."""
+        if not parameters or not isinstance(parameters, dict):
+            return []
+        hits: List[str] = []
+        seen = set()
+
+        def add(token: str) -> None:
+            if token not in seen:
+                seen.add(token)
+                hits.append(token)
+
+        def walk(node: Any, path: str, depth: int) -> None:
+            if depth > 6 or node is None:
+                return
+            if isinstance(node, str):
+                if path != "description" and not path.endswith(".description") and self._FSP_INSTRUCTION.search(node):
+                    add(f"instruction_in:{path or 'value'}")
+                return
+            if isinstance(node, (list, tuple)):
+                for i, v in enumerate(node):
+                    walk(v, f"{path}[{i}]", depth + 1)
+                return
+            if isinstance(node, dict):
+                for key in node:
+                    if self._FSP_SUSPICIOUS_KEY.search(str(key)):
+                        add(f"suspicious_key:{key}")
+                    walk(node[key], f"{path}.{key}" if path else str(key), depth + 1)
+
+        walk(parameters, "", 0)
+        return hits
 
     def _scan_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         violations: List[str] = []

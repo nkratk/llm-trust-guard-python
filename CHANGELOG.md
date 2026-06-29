@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.11.0 (2026-06-29)
+
+### Added — `OutputGuard` (OWASP LLM05:2025 Improper Output Handling)
+
+New guard (L35) that scans **model/tool output** for payloads dangerous to a
+downstream sink, complementing `OutputFilter` (PII/secret egress only). Detects
+HTML/DOM XSS (`<script>`, `javascript:`, inline event handlers, `<img onerror>`,
+`document.cookie`), SQL injection (`UNION SELECT`, `' OR 1=1`, `;DROP TABLE`,
+`xp_cmdshell`), OS command injection (`$(...)`/backticks, `;rm -rf`,
+`curl|wget … | bash`, pipe-to-shell), markdown image-exfiltration links
+(`![](https://host/?data=…)`, plus off-allowlist links when `allowed_domains`
+is set), and spreadsheet/CSV formula injection (cells starting `= + - @` with
+`HYPERLINK`/`IMPORT*`/`WEBSERVICE`/`DDE`/`cmd|`).
+
+Critical payloads block; single high-severity signals are reported and require
+corroboration to auto-block. Optional `sanitize=True` returns a neutralized
+copy. Zero new dependencies. 21 tests. New exports: `OutputGuard`,
+`OutputGuardConfig`, `OutputGuardResult`, `OutputThreat`.
+
+### Added — MCP registration-time schema-poisoning & line-jumping detection
+
+`MCPSecurityGuard.validate_server_registration()` now inspects tools beyond the
+`description` field:
+
+- **Full-schema poisoning (FSP)** — walks the entire parameter schema (key
+  names, `enum`/`default`/`const` values, nested objects) for smuggled
+  instructions or suspicious keys (CyberArk "Poison Everywhere", 2025).
+- **Line-jumping** — flags descriptions that inject instructions at `tools/list`
+  time, before any invocation or approval: pre-invocation directives, secrecy
+  phrases, fake-compliance framing (Trail of Bits, 2025).
+
+Both default on; toggle via `detect_schema_poisoning` / `detect_line_jumping`.
+New violation prefixes: `schema_poisoning:` and `line_jumping:`. 5 tests.
+
+Mirrored 1:1 with the npm package (`llm-trust-guard` 4.22.0).
+
 ## 0.10.4 (2026-06-12)
 
 ### Docs — document AST sandbox-escape detection; add README-sync gate (G11)

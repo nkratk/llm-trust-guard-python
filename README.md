@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/llm-trust-guard.svg)](https://pypi.org/project/llm-trust-guard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**34 security guards for LLM-powered and agentic AI applications.** Zero dependencies. Covers OWASP Top 10 for LLMs 2025, OWASP Agentic AI 2026, and MCP Security.
+**35 security guards for LLM-powered and agentic AI applications.** Zero dependencies. Covers OWASP Top 10 for LLMs 2025, OWASP Agentic AI 2026, and MCP Security.
 
 Also available as an [npm package](https://www.npmjs.com/package/llm-trust-guard) for TypeScript/JavaScript.
 
@@ -25,9 +25,10 @@ Per-category detection rates below are measured against the package's curated un
 - Multilingual injection (10 languages) — 100% on unit tests
 - Homoglyph attacks (Cyrillic/Greek character substitution) — normalized and detected
 - PII and secret leakage in outputs
+- Improper output handling — XSS/SQLi/shell/markdown-image-exfil/CSV-formula payloads in model output before downstream sinks (LLM05:2025, new `OutputGuard`)
 - Tool hallucination, RBAC bypass, multi-tenant violations
 - Tool result poisoning, context window stuffing
-- MCP tool shadowing, rug pull attacks, SSRF
+- MCP tool shadowing, rug pull attacks, SSRF, full-schema poisoning (FSP) and line-jumping at registration time
 - Malicious agent plugins (OpenClaw backdoor signatures, typosquatting, capability mismatch)
 - External data validation (source verification, injection scanning, secret detection)
 - Session integrity (permission escalation, session hijacking, replay attacks)
@@ -206,35 +207,39 @@ guard.analyze("print('hello world')", "python").allowed                       # 
 
 ## OWASP Coverage
 
+Mapped to the official lists ([LLM Top 10 2025](https://genai.owasp.org/resource/owasp-top-10-for-llm-applications-2025/), [Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)): a built-in guard **maps to** all 10 Agentic 2026 (ASI) risks and 9 of 10 LLM Top 10 2025 (LLM09 Misinformation needs a pluggable ML backend).
+
+> **"Covered" = a guard maps to the risk (taxonomy mapping), not a detection-efficacy guarantee.** The **architectural** guards — access control, tenant isolation, delegation scope, inter-agent auth, rate/cost limits — are the strong **primary** controls. The **content-detection** guards (regex/heuristic) are a **WAF-like first line** with a measured ceiling: see [What it catches](#what-this-package-does-and-what-it-doesnt) and Measured Performance. The stdlib-`ast` sandbox-escape detection (0.10.3) is real and verified, but a bash/shell-only code-exec corpus won't surface it — add `language='python'` introspection-gadget payloads to measure it.
+
 ### LLM Top 10 2025
 
 | Threat | Guards | Coverage |
 |--------|--------|----------|
-| LLM01: Prompt Injection | InputSanitizer, EncodingDetector, ContextBudgetGuard | Strong (known patterns), Weak (novel semantic) |
-| LLM02: Sensitive Data Exposure | OutputFilter, PromptLeakageGuard | Strong |
-| LLM03: Supply Chain | MCPSecurityGuard | Moderate (MCP-focused) |
-| LLM04: Data Poisoning | RAGGuard, MemoryGuard | Moderate |
-| LLM05: Improper Output Handling | OutputSchemaGuard, OutputFilter | Strong |
-| LLM06: Excessive Agency | AutonomyEscalationGuard, ToolChainValidator | Strong |
+| LLM01: Prompt Injection | InputSanitizer, EncodingDetector, CompressionDetector, HeuristicAnalyzer | Strong (known patterns), Weak (novel semantic) |
+| LLM02: Sensitive Information Disclosure | OutputFilter, PromptLeakageGuard | Strong |
+| LLM03: Supply Chain | MCPSecurityGuard, AgentSkillGuard, ExternalDataGuard | Moderate |
+| LLM04: Data and Model Poisoning | RAGGuard, MemoryGuard | Moderate |
+| LLM05: Improper Output Handling | OutputSchemaGuard, OutputFilter, ToolResultGuard | Strong |
+| LLM06: Excessive Agency | ToolRegistry, PolicyGate, ToolChainValidator, AutonomyEscalationGuard | Strong |
 | LLM07: System Prompt Leakage | PromptLeakageGuard | Strong |
-| LLM08: Vector/Embedding Weakness | RAGGuard | Moderate |
-| LLM09: Misinformation | DetectionClassifier (pluggable) | Requires ML backend |
-| LLM10: Unbounded Consumption | ExecutionMonitor, TokenCostGuard | Strong |
+| LLM08: Vector and Embedding Weaknesses | RAGGuard | Moderate |
+| LLM09: Misinformation | DetectionClassifier (pluggable ML) | Requires ML backend |
+| LLM10: Unbounded Consumption | ExecutionMonitor, TokenCostGuard, ContextBudgetGuard | Strong |
 
-### Agentic AI 2026
+### Agentic Applications 2026 (ASI)
 
 | Threat | Guards | Coverage |
 |--------|--------|----------|
-| ASI01: Agent Goal Hijack | InputSanitizer, ConversationGuard | Moderate |
-| ASI02: Tool Misuse | ToolChainValidator, ToolRegistry | Strong |
-| ASI03: Privilege Mismanagement | PolicyGate, TenantBoundary | Strong |
-| ASI04: Supply Chain | MCPSecurityGuard | Moderate |
-| ASI05: Code Execution | CodeExecutionGuard | Strong |
-| ASI06: Memory Poisoning | MemoryGuard, StatePersistenceGuard | Strong |
-| ASI07: Inter-Agent Communication | AgentCommunicationGuard | Strong |
-| ASI08: Cascading Failures | CircuitBreaker, DriftDetector | Strong |
-| ASI09: Trust Exploitation | TrustExploitationGuard | Strong |
-| ASI10: Rogue Agents | DriftDetector, AutonomyEscalationGuard | Moderate |
+| ASI01: Agent Goal Hijack | ConversationGuard, InputSanitizer | Moderate |
+| ASI02: Tool Misuse and Exploitation | ToolChainValidator, ToolRegistry | Strong |
+| ASI03: Identity and Privilege Abuse | PolicyGate, TenantBoundary | Strong |
+| ASI04: Agentic Supply Chain Vulnerabilities | AgentSkillGuard, MCPSecurityGuard, ExternalDataGuard | Moderate |
+| ASI05: Unexpected Code Execution (RCE) | CodeExecutionGuard | Strong |
+| ASI06: Memory & Context Poisoning | MemoryGuard, StatePersistenceGuard | Strong |
+| ASI07: Insecure Inter-Agent Communication | AgentCommunicationGuard, SessionIntegrityGuard, SpawnPolicyGuard, DelegationScopeGuard, TrustTransitivityGuard | Strong |
+| ASI08: Cascading Failures | CircuitBreaker, StatePersistenceGuard | Strong |
+| ASI09: Human-Agent Trust Exploitation | TrustExploitationGuard | Strong |
+| ASI10: Rogue Agents | AutonomyEscalationGuard, DriftDetector | Moderate |
 
 ## Measured Performance
 

@@ -1,5 +1,5 @@
 """
-llm-trust-guard — 31 security guards for LLM-powered applications.
+llm-trust-guard — 35 security guards for LLM-powered applications.
 
 Zero dependencies. Covers OWASP Top 10 for LLMs 2025, Agentic AI 2026, and MCP Security.
 """
@@ -26,6 +26,7 @@ from llm_trust_guard.guards.token_cost_guard import TokenCostGuard, TokenCostRes
 from llm_trust_guard.guards.output_filter import OutputFilter, OutputFilterResult
 from llm_trust_guard.guards.output_schema_guard import OutputSchemaGuard, OutputSchemaResult
 from llm_trust_guard.guards.tool_result_guard import ToolResultGuard, ToolResultGuardResult
+from llm_trust_guard.guards.output_guard import OutputGuard, OutputGuardConfig, OutputGuardResult, OutputThreat
 
 # Agentic Guards
 from llm_trust_guard.guards.tool_chain_validator import ToolChainValidator, ToolChainValidatorConfig
@@ -63,7 +64,7 @@ from llm_trust_guard.integrations.fastapi_integration import TrustGuardMiddlewar
 from llm_trust_guard.integrations.langchain_integration import TrustGuardLangChain, TrustGuardViolationError, create_input_validator, create_output_filter
 from llm_trust_guard.integrations.openai_integration import SecureOpenAI, OpenAISecurityError, create_message_validator, wrap_openai_client
 
-__version__ = "0.10.4"
+__version__ = "0.11.0"
 
 __all__ = [
     # Input Guards
@@ -86,6 +87,7 @@ __all__ = [
     "OutputFilter", "OutputFilterResult",
     "OutputSchemaGuard", "OutputSchemaResult",
     "ToolResultGuard", "ToolResultGuardResult",
+    "OutputGuard", "OutputGuardConfig", "OutputGuardResult", "OutputThreat",
     # Agentic
     "ToolChainValidator", "ToolChainValidatorConfig",
     "AgentCommunicationGuard", "AgentCommunicationGuardConfig",
