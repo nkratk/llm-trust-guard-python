@@ -128,7 +128,7 @@ tool_result = guard.validate_tool_result("search", tool_output)
 | Guard | Purpose | Detection |
 |-------|---------|-----------|
 | InputSanitizer | Prompt injection, PAP, Policy Puppetry | 170+ regex patterns, 11 languages |
-| EncodingDetector | Encoding bypass (9 formats, multi-layer) | Decode + pattern match |
+| EncodingDetector | Encoding bypass (9 formats, multi-layer) + Sneaky Bits (U+2062/U+2064, variation selectors) | Decode + pattern match; `SNEAKY_BITS_ENCODING_DETECTED` violation |
 | CompressionDetector | Structural similarity to known attacks (NCD) | gzip compression distance, 135 templates |
 | HeuristicAnalyzer | Synonym expansion, structural + statistical analysis | 8 attack categories, 130+ synonyms |
 | PromptLeakageGuard | System prompt extraction attempts | Direct + encoded + indirect |
@@ -167,7 +167,7 @@ tool_result = guard.validate_tool_result("search", tool_output)
 | StatePersistenceGuard | State corruption prevention | Integrity hashing |
 | CodeExecutionGuard | Unsafe code execution | Static analysis (regex + Python AST sandbox-escape) |
 | RAGGuard | RAG document poisoning | Source trust + injection |
-| MCPSecurityGuard | MCP tool shadowing, rug pull, SSRF | Registration + mutation hash |
+| MCPSecurityGuard | MCP tool shadowing, rug pull, SSRF, credential exposure | Registration + mutation hash + credential scan; `detect_credential_exposure` option |
 | CircuitBreaker | Cascading failure prevention | State machine |
 | DriftDetector | Behavioral anomaly detection | Statistical profiling |
 | ExternalDataGuard | External data validation before LLM context | Source trust + injection + secret scan |
