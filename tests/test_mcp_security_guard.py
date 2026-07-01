@@ -337,3 +337,97 @@ class TestRegistrationSchemaPoisoningAndLineJumping:
         result = guard.validate_server_registration(registration)
         assert not any(v.startswith("schema_poisoning") for v in result.violations)
         assert not any(v.startswith("line_jumping") for v in result.violations)
+
+
+class TestCredentialExposureDetection:
+    def test_should_detect_aws_access_key_in_parameter(self):
+        guard = MCPSecurityGuard(MCPSecurityGuardConfig(strict_mode=True))
+        registration = MCPServerRegistration(
+            server=MCPServerIdentity(server_id="aws-leaker", name="AWS Leaker"),
+            tools=[MCPToolDefinition(
+                name="list_buckets",
+                description="Lists S3 buckets",
+                server_id="aws-leaker",
+                parameters={"aws_key": {"type": "string", "default": "AKIAIOSFODNN7EXAMPLE"}},
+            )],
+            timestamp=int(time.time() * 1000),
+        )
+        result = guard.validate_server_registration(registration)
+        assert any("credential_exposed" in v for v in result.violations)
+        assert any("aws_access_key" in v for v in result.violations)
+
+    def test_should_detect_github_pat_in_metadata(self):
+        guard = MCPSecurityGuard(MCPSecurityGuardConfig(strict_mode=True))
+        registration = MCPServerRegistration(
+            server=MCPServerIdentity(
+                server_id="gh-leaker", name="GitHub Leaker",
+                metadata={"token": "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890"},
+            ),
+            tools=[MCPToolDefinition(
+                name="repo_read", description="Read repo",
+                server_id="gh-leaker", parameters={},
+            )],
+            timestamp=int(time.time() * 1000),
+        )
+        result = guard.validate_server_registration(registration)
+        assert any("credential_exposed" in v for v in result.violations)
+        assert any("github_pat" in v for v in result.violations)
+
+    def test_should_detect_bearer_token_in_parameter_default(self):
+        guard = MCPSecurityGuard(MCPSecurityGuardConfig(strict_mode=True))
+        registration = MCPServerRegistration(
+            server=MCPServerIdentity(server_id="bearer-leaker", name="Bearer Leaker"),
+            tools=[MCPToolDefinition(
+                name="call_api", description="Calls external API",
+                server_id="bearer-leaker",
+                parameters={"auth": {"type": "string", "default": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"}},
+            )],
+            timestamp=int(time.time() * 1000),
+        )
+        result = guard.validate_server_registration(registration)
+        assert any("credential_exposed" in v for v in result.violations)
+
+    def test_should_detect_slack_token_in_parameter(self):
+        guard = MCPSecurityGuard(MCPSecurityGuardConfig(strict_mode=True))
+        registration = MCPServerRegistration(
+            server=MCPServerIdentity(server_id="slack-leaker", name="Slack Leaker"),
+            tools=[MCPToolDefinition(
+                name="post_message", description="Post to Slack",
+                server_id="slack-leaker",
+                parameters={"token": {"type": "string", "default": "xoxb-FAKE-TOKEN-FOR-UNIT-TEST-NOT-REAL"}},
+            )],
+            timestamp=int(time.time() * 1000),
+        )
+        result = guard.validate_server_registration(registration)
+        assert any("credential_exposed" in v for v in result.violations)
+        assert any("slack_token" in v for v in result.violations)
+
+    def test_should_not_flag_clean_registration(self):
+        guard = MCPSecurityGuard(MCPSecurityGuardConfig(strict_mode=False))
+        registration = MCPServerRegistration(
+            server=MCPServerIdentity(server_id="clean-server", name="Clean Server"),
+            tools=[MCPToolDefinition(
+                name="search", description="Search documents",
+                server_id="clean-server",
+                parameters={"query": {"type": "string", "description": "Search query"}},
+            )],
+            timestamp=int(time.time() * 1000),
+        )
+        result = guard.validate_server_registration(registration)
+        assert not any("credential_exposed" in v for v in result.violations)
+
+    def test_should_respect_detect_credential_exposure_false(self):
+        guard = MCPSecurityGuard(MCPSecurityGuardConfig(
+            strict_mode=True, detect_credential_exposure=False,
+        ))
+        registration = MCPServerRegistration(
+            server=MCPServerIdentity(server_id="cred-off", name="Cred Off"),
+            tools=[MCPToolDefinition(
+                name="t", description="Tool",
+                server_id="cred-off",
+                parameters={"key": {"default": "AKIAIOSFODNN7EXAMPLE"}},
+            )],
+            timestamp=int(time.time() * 1000),
+        )
+        result = guard.validate_server_registration(registration)
+        assert not any("credential_exposed" in v for v in result.violations)

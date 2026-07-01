@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.0 (2026-06-30)
+
+### Added — Sneaky Bits encoding detection in `EncodingDetector`
+
+- Invisible operators (U+2062/U+2064) and variation selectors (U+FE00-U+FE0F, 2+
+  consecutive) used by the "Sneaky Bits" attack (NVIDIA 2025).
+- New violation: `SNEAKY_BITS_ENCODING_DETECTED` when 3+ consecutive invisible
+  operators present. Mirrors TS v4.23.0.
+
+### Added — Credential exposure scanning in `MCPSecurityGuard`
+
+`validate_server_registration()` now scans the full registration object for
+exposed credential values: AWS keys, GitHub PATs, Bearer/JWT tokens, Stripe
+keys, Slack tokens, Google API keys. New violation: `credential_exposed: <type>`.
+Toggle via `detect_credential_exposure` (default: `True`). Mirrors TS v4.23.0.
+
 ## 0.11.0 (2026-06-29)
 
 ### Added — `OutputGuard` (OWASP LLM05:2025 Improper Output Handling)

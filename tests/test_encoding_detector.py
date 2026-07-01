@@ -287,6 +287,30 @@ class TestHelperMethods:
 # Edge Cases
 # ---------------------------------------------------------------------------
 
+class TestSneakyBitsDetection:
+    def test_should_detect_invisible_operators_u2062_u2064(self, detector):
+        # U+2062 INVISIBLE TIMES / U+2064 INVISIBLE SEPARATOR — Sneaky Bits encoding
+        sneaky = "normal text⁢⁤⁢⁤⁢ hidden payload"
+        result = detector.detect(sneaky)
+        assert "UNICODE_OBFUSCATION_DETECTED" in result.violations
+
+    def test_should_emit_sneaky_bits_encoding_detected_for_3plus_consecutive_ops(self, detector):
+        encoded = "⁢⁤⁢⁤⁤⁢"  # 6 invisible ops = binary-encoded text
+        result = detector.detect(encoded)
+        assert "SNEAKY_BITS_ENCODING_DETECTED" in result.violations
+
+    def test_should_detect_variation_selectors_fe00_fe0f(self, detector):
+        # U+FE01-U+FE03 variation selectors — detected, violation reported
+        with_vs = "text︁︂︃ injected instruction"
+        result = detector.detect(with_vs)
+        assert "UNICODE_OBFUSCATION_DETECTED" in result.violations
+
+    def test_should_pass_clean_text_with_no_invisible_operators(self, detector):
+        clean = "This is completely normal text with no hidden characters."
+        result = detector.detect(clean)
+        assert result.allowed is True
+
+
 class TestEdgeCases:
     def test_should_handle_empty_input(self, detector):
         result = detector.detect("")

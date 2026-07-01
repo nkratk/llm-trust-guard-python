@@ -298,6 +298,15 @@ _BIDI_RE = re.compile(
 
 _TAG_CHARS_RE = re.compile("[\U000E0000-\U000E007F]")
 
+# Invisible operators (Sneaky Bits attack — NVIDIA 2025, Embrace the Red)
+# U+2062 INVISIBLE TIMES / U+2064 INVISIBLE SEPARATOR encode binary 0/1
+_INVISIBLE_OPS_RE = re.compile("[⁢⁤]")
+_SNEAKY_BITS_RE = re.compile("[⁢⁤]{3,}")
+
+# Unicode variation selectors U+FE00-U+FE0F (Sneaky Bits binary encoding).
+# Require 2+ consecutive — single U+FE0F is normal in emoji text (e.g. ❤️).
+_VARIATION_SELECTORS_RE = re.compile("[︀-️]{2,}")
+
 
 # ---------------------------------------------------------------------------
 # EncodingDetector
@@ -367,6 +376,10 @@ class EncodingDetector:
                 ))
                 obfuscation_score += 3
                 violations.append("UNICODE_OBFUSCATION_DETECTED")
+                # Sneaky Bits binary-encoding: 3+ consecutive invisible operators
+                if "sneaky_bits_encoding" in r_uni.types:
+                    obfuscation_score += 2
+                    violations.append("SNEAKY_BITS_ENCODING_DETECTED")
                 # Dual normalization (v4.13.1): stripped + spaced
                 if r_uni.normalized:
                     self._check_threats(r_uni.normalized, "decoded_unicode", threats_found)
@@ -618,6 +631,20 @@ class EncodingDetector:
             count += len(tag_matches)
             types.append("tag_characters")
 
+        # Invisible operators (Sneaky Bits attack — NVIDIA 2025, Embrace the Red)
+        inv_op_matches = _INVISIBLE_OPS_RE.findall(input_text)
+        if inv_op_matches:
+            count += len(inv_op_matches)
+            types.append("invisible_operators")
+            if _SNEAKY_BITS_RE.search(input_text):
+                types.append("sneaky_bits_encoding")
+
+        # Variation selectors U+FE00-U+FE0F — 2+ consecutive sequences only
+        vs_matches = _VARIATION_SELECTORS_RE.findall(input_text)
+        if vs_matches:
+            count += sum(len(m) for m in vs_matches)
+            types.append("variation_selectors")
+
         normalized: Optional[str] = None
         normalized_spaced: Optional[str] = None
 
@@ -666,6 +693,9 @@ class EncodingDetector:
             base = _BIDI_RE.sub("", base)
             # Remove tag characters
             base = _TAG_CHARS_RE.sub("", base)
+            # Remove invisible operators and variation selectors
+            base = _INVISIBLE_OPS_RE.sub("", base)
+            base = re.sub("[︀-️]{2,}", "", base)
 
             # Primary: strip ZWS (intra-word: "igno\u200Bre" -> "ignore")
             normalized = _ZERO_WIDTH_RE.sub("", base)

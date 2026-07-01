@@ -181,6 +181,10 @@ class MCPSecurityGuardConfig:
     # Detect line-jumping: a description that injects instructions into context
     # at tools/list time (Trail of Bits, 2025).
     detect_line_jumping: bool = True
+    # Scan the full registration object for exposed credential values: AWS keys,
+    # GitHub PATs, Bearer tokens, Stripe keys, Slack tokens, Google API keys.
+    # (Astrix Security, 2025: 48% of MCP servers store credentials in plaintext.)
+    detect_credential_exposure: bool = True
 
 
 @dataclass
@@ -289,6 +293,7 @@ class MCPSecurityGuard:
         self._custom_injection_patterns = list(cfg.custom_injection_patterns)
         self._detect_schema_poisoning_enabled = cfg.detect_schema_poisoning
         self._detect_line_jumping_enabled = cfg.detect_line_jumping
+        self._detect_credential_exposure_enabled = cfg.detect_credential_exposure
 
         self._registered_servers: Dict[str, MCPServerIdentity] = {}
         self._registered_tools: Dict[str, MCPToolDefinition] = {}
@@ -399,6 +404,14 @@ class MCPSecurityGuard:
                 if fsp:
                     violations.append(f"schema_poisoning: {tool.name} ({', '.join(fsp)})")
                     reputation_score -= 30
+
+        # Credential exposure: scan full registration object for leaked values —
+        # AWS keys, GitHub PATs, bearer tokens, etc. (Astrix Security, 2025).
+        if self._detect_credential_exposure_enabled:
+            cred_hits = self._detect_credential_exposure(registration)
+            if cred_hits:
+                violations.append(f"credential_exposed: {', '.join(cred_hits)}")
+                reputation_score -= 40
 
         # Validate OAuth endpoints if present
         if oauth and self._validate_oauth_endpoints:
@@ -879,6 +892,49 @@ class MCPSecurityGuard:
 
         walk(parameters, "", 0)
         return hits
+
+    _CREDENTIAL_PATTERNS: List[Tuple[re.Pattern, str]] = [
+        (re.compile(r"\b(AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}\b"), "aws_access_key"),
+        (re.compile(r"(?:^|[^a-z0-9])ghp_[A-Za-z0-9]{36,40}(?:[^a-z0-9]|$)"), "github_pat"),
+        (re.compile(r"(?:^|[^a-z0-9])ghs_[A-Za-z0-9]{36,40}(?:[^a-z0-9]|$)"), "github_server_token"),
+        (re.compile(r"(?:^|[^a-z0-9])gho_[A-Za-z0-9]{36,40}(?:[^a-z0-9]|$)"), "github_oauth_token"),
+        (re.compile(r"sk_live_[A-Za-z0-9]{24,}"), "stripe_secret_key"),
+        (re.compile(r"xox[bporas]-[A-Za-z0-9\-]+"), "slack_token"),
+        (re.compile(r"\bAIza[A-Za-z0-9\-_]{35}\b"), "google_api_key"),
+        (re.compile(r"Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*"), "bearer_token"),
+        (re.compile(r"\bey[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_.+/]+=*"), "jwt_token"),
+    ]
+
+    def _detect_credential_exposure(self, obj: Any) -> List[str]:
+        """Scan the full registration object for exposed credential values."""
+        hits: set = set()
+
+        def scan_val(val: str) -> None:
+            for pattern, label in self._CREDENTIAL_PATTERNS:
+                if pattern.search(val):
+                    hits.add(label)
+
+        def walk(node: Any, depth: int) -> None:
+            if depth > 8 or node is None:
+                return
+            if isinstance(node, str):
+                scan_val(node)
+                return
+            if isinstance(node, (list, tuple)):
+                for v in node:
+                    walk(v, depth + 1)
+                return
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v, depth + 1)
+                return
+            # Handle dataclass-like objects
+            if hasattr(node, "__dict__"):
+                for v in vars(node).values():
+                    walk(v, depth + 1)
+
+        walk(obj, 0)
+        return list(hits)
 
     def _scan_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         violations: List[str] = []
