@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.15.0 (2026-07-02)
+
+### Added — `InputSanitizer`: 9 new policy-puppetry patterns
+
+Mirror of TS v4.26.0. Closes 395-miss cluster (10.2% of threat corpus).
+New patterns: `llm_ini_namespace`, `llama2_sys_fencing`, `json_safety_false`,
+`json_system_override`, `ini_inline_key_value`, `mode_activation`,
+`system_override_engaged`, `instructions_void`, `forget_your_instructions`.
+
+### Changed — `InputSanitizer`: `named_jailbreak_persona` extended + bidi strip
+
+Added `persona|profile|\s+active|\s+enabled` alternatives. Extended bidi strip
+to U+202A–U+202F and U+200E/200F.
+
 ## 0.14.0 (2026-07-02)
 
 ### Fixed — FPR reduction in `ExternalDataGuard` + `ToolResultGuard` patterns

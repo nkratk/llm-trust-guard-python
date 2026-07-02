@@ -142,7 +142,7 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     # Named jailbreak personas
     InjectionPattern(re.compile(r"(?:system\s+note|system\s+message|system\s+announcement|system\s+update)\s*[:\.]", re.I), 0.85, "fake_system_note"),
     InjectionPattern(re.compile(r"instructions?\s*[:=]\s*\{|rules?\s*[:=]\s*\{", re.I), 0.75, "rules_block_override"),
-    InjectionPattern(re.compile(r"(?:AIM|STAN|OMEGA|APOPHIS|ALPHABREAK|DUDE|KEVIN|SETH|COOPER|NICCOLO|MACHIAVELLI|MAXIMUM|JAILBREAK|ANARCHY|CHAOS)\s*(?:mode|:|\(|is\s+a|,\s+(?:a|an|the))", re.I), 0.8, "named_jailbreak_persona"),
+    InjectionPattern(re.compile(r"(?:AIM|STAN|OMEGA|APOPHIS|ALPHABREAK|DUDE|KEVIN|SETH|COOPER|NICCOLO|MACHIAVELLI|MAXIMUM|JAILBREAK|ANARCHY|CHAOS)\s*(?:mode|persona|profile|:|\(|is\s+a|,\s+(?:a|an|the)|\s+active|\s+enabled)", re.I), 0.8, "named_jailbreak_persona"),
     InjectionPattern(re.compile(r"(?:character|persona|entity|being)\s+(?:named|called)\s+\w+.*(?:(?:can|will|must)\s+(?:answer|do|say)\s+anything|no\s+(?:restrictions|rules|limits|boundaries|morals|ethics))", re.I), 0.75, "persona_no_limits"),
     InjectionPattern(re.compile(r"(?:respond|answer|reply)\s+to\s+(?:everything|anything|all\s+(?:questions|requests)).*(?:without|no)\s+(?:restrictions|limits|refus|filter|censor)", re.I), 0.8, "answer_everything_no_filter"),
     InjectionPattern(re.compile(r"(?:you\s+(?:are|have)\s+(?:been\s+)?(?:freed|liberated|unchained|unlocked|released)\s+from)", re.I), 0.8, "freed_from_restrictions"),
@@ -270,6 +270,21 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"забудь(?:те)?\s+(?:всё|все\s+правила)", re.I), 0.8, "ml_ru_forget"),
     InjectionPattern(re.compile(r"تجاهل\s+(?:جميع\s+)?التعليمات|انسَ\s+كل\s+شيء", re.I), 0.9, "ml_ar_ignore"),
     InjectionPattern(re.compile(r"पिछले\s+(?:सभी\s+)?(?:निर्देशों|नियमों)\s+को\s+(?:अनदेखा|भूल)", re.I), 0.9, "ml_hi_ignore"),
+
+    # Policy Puppetry — LLM-specific config format variants
+    InjectionPattern(re.compile(r"\[\s*(?:interaction[-_]?config|model[-_]?instruction|safety[-_]?config|llm[-_]?config)\]", re.I), 0.85, "llm_ini_namespace"),
+    InjectionPattern(re.compile(r"<<\/?(?:SYS[_-]?POLICY|SYS|INST|SYSTEM|CONTEXT)\s*>>", re.I), 0.9, "llama2_sys_fencing"),
+    InjectionPattern(re.compile(r'"(?:safety|restrictions?|guardrails?|alignment|filters?|censorship)"\s*:\s*false', re.I), 0.85, "json_safety_false"),
+    InjectionPattern(re.compile(r'"(?:system_override|policy_override|safety_override)"\s*:', re.I), 0.8, "json_system_override"),
+    InjectionPattern(re.compile(r"\[\s*(?:config|system|admin|override|policy|rules|interaction[-_]?config)\]\s+\w[\w-]*\s*=\s*(?:disabled?|false|unrestricted|enabled|all)", re.I), 0.85, "ini_inline_key_value"),
+
+    # Jailbreak activation phrase patterns
+    InjectionPattern(re.compile(r"(?:admin|developer|god|dr\.?\s*house|jailbreak|unrestricted)\s+mode\s+(?:activated?|enabled?|engaged?|on\b)", re.I), 0.85, "mode_activation"),
+    InjectionPattern(re.compile(r"system\s+override\s+(?:engaged?|activated?|enabled?|initiated?)", re.I), 0.85, "system_override_engaged"),
+
+    # Passive instruction-void declaratives (caught after ZWSP/bidi strip)
+    InjectionPattern(re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|null|cancelled?|invalid|overridden?|revoked|rescinded|superseded)", re.I), 0.85, "instructions_void"),
+    InjectionPattern(re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?|context)", re.I), 0.85, "forget_your_instructions"),
 ]
 # fmt: on
 
@@ -348,8 +363,9 @@ class InputSanitizer:
         warnings: List[str] = []
         total_weight = 0.0
 
-        # Strip zero-width characters before scanning (invisible text injection defense)
-        cleaned_input = re.sub(r"[\u200B\u200C\u200D\uFEFF\u00AD\u2060\u180E]", "", input_text)
+        # Strip zero-width and bidi-control characters before scanning (invisible text injection defense)
+        # Includes RLO/LRO (U+202E/202D), bidi embeddings (U+202A-202C), LRM/RLM (U+200E/200F)
+        cleaned_input = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060\u180E\uFEFF\u00AD]", "", input_text)
 
         matched_patterns = [
             p for p in self.patterns if p.pattern.search(cleaned_input)
