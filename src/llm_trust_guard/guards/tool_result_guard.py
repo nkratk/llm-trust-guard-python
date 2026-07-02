@@ -93,11 +93,11 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     # Structured document / serialization injection in tool results
     _InjectionPattern("xxe_entity", re.compile(r'<!ENTITY\s+\w+\s+SYSTEM\s+["\'][^"\']+["\']', re.I), "critical"),
     _InjectionPattern("doctype_entity", re.compile(r"<!DOCTYPE\s+\w+\s*\[[\s\S]*<!ENTITY", re.I), "critical"),
-    _InjectionPattern("path_traversal", re.compile(r"(?:\.\.\/){2,}|(?:\.\.\\){2,}"), "high"),
+    _InjectionPattern("path_traversal", re.compile(r"(?:\.\.\/){3,}|(?:\.\.\\){3,}|(?:\.\.\/){2,}(?:etc|tmp|root|proc|sys|dev|usr|win)\b|(?:\.\.\\){2,}(?:windows|system32|users)\b", re.I), "high"),
     _InjectionPattern("rtf_ole_object", re.compile(r"\\object\\obj(?:emb|link|auto)|\\objdata\s", re.I), "critical"),
     _InjectionPattern("langchain_gadget", re.compile(r'\{["\']lc["\']\s*:\s*[12]\s*,\s*["\']type["\']\s*:\s*["\'](?:constructor|secret|not_implemented)', re.I), "critical"),
     _InjectionPattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>", re.I), "critical"),
-    _InjectionPattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:", re.I), "critical"),
+    _InjectionPattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:\s*(?:execute|run|call|invoke|perform|fetch|send|ignore|bypass|forget|override|disregard|print|reveal|output|delete|drop)\b", re.I), "critical"),
 ]
 # fmt: on
 

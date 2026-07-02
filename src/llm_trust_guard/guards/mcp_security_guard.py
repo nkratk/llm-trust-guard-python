@@ -518,6 +518,13 @@ class MCPSecurityGuard:
             parameters_safe = False
             violations.extend(param_check["violations"])
 
+        # Scan parameters for live credentials (AKIA keys, GitHub PATs, JWTs, etc.)
+        if self._detect_credential_exposure_enabled:
+            cred_hits = self._detect_credential_exposure(parameters)
+            if cred_hits:
+                parameters_safe = False
+                violations.extend(f"LIVE_CREDENTIAL_IN_TOOL_PARAMETER:{h}" for h in cred_hits)
+
         # Check for high-risk operations
         if self._is_high_risk_operation(tool_name, parameters):
             risk_level = "high"

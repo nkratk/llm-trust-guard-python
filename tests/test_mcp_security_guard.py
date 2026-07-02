@@ -431,3 +431,40 @@ class TestCredentialExposureDetection:
         )
         result = guard.validate_server_registration(registration)
         assert not any("credential_exposed" in v for v in result.violations)
+
+
+class TestLiveCredentialInToolCall:
+    def setup_method(self):
+        self.guard = MCPSecurityGuard(MCPSecurityGuardConfig(detect_credential_exposure=True))
+        self.guard.register_trusted_server(
+            MCPServerIdentity(server_id="server1", name="Server1"),
+            [MCPToolDefinition(name="upload_file", description="upload", server_id="server1")],
+        )
+
+    def test_blocks_aws_key_in_parameter(self):
+        r = self.guard.validate_tool_call(MCPToolCall(
+            tool_name="upload_file", server_id="server1",
+            parameters={"api_key": "AKIAIOSFODNN7EXAMPL3", "bucket": "my-bucket"},
+        ))
+        assert any(v.startswith("LIVE_CREDENTIAL_IN_TOOL_PARAMETER:") for v in r.violations)
+
+    def test_blocks_github_pat_in_parameter(self):
+        r = self.guard.validate_tool_call(MCPToolCall(
+            tool_name="upload_file", server_id="server1",
+            parameters={"token": "ghp_FakeTokenForTestingPurposesOnly12345"},
+        ))
+        assert any(v.startswith("LIVE_CREDENTIAL_IN_TOOL_PARAMETER:") for v in r.violations)
+
+    def test_blocks_jwt_in_parameter(self):
+        r = self.guard.validate_tool_call(MCPToolCall(
+            tool_name="upload_file", server_id="server1",
+            parameters={"auth": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+        ))
+        assert any(v.startswith("LIVE_CREDENTIAL_IN_TOOL_PARAMETER:") for v in r.violations)
+
+    def test_allows_clean_parameters(self):
+        r = self.guard.validate_tool_call(MCPToolCall(
+            tool_name="upload_file", server_id="server1",
+            parameters={"filename": "report.pdf", "size": 1024},
+        ))
+        assert not any(v.startswith("LIVE_CREDENTIAL_IN_TOOL_PARAMETER:") for v in r.violations)

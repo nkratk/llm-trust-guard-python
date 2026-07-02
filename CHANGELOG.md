@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.14.0 (2026-07-02)
+
+### Fixed — FPR reduction in `ExternalDataGuard` + `ToolResultGuard` patterns
+
+`path_traversal`: Raised minimum traversal depth to 3 levels + sensitive directory
+anchoring. `../../src/components` no longer triggers.
+
+`html_comment_directive`: Requires imperative verb after colon. AI provenance
+markers (`<!-- AI: generated -->`) no longer trigger.
+
+### Fixed — Credential exposure gap in `MCPSecurityGuard.validate_tool_call()`
+
+`validate_tool_call()` now calls `_detect_credential_exposure()` on live parameters.
+New violation: `LIVE_CREDENTIAL_IN_TOOL_PARAMETER:<pattern_name>`. Mirrors TS v4.25.0.
+
 ## 0.13.0 (2026-07-02)
 
 ### Added — OS command injection detection in `ToolChainValidator`
