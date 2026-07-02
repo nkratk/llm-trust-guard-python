@@ -88,6 +88,16 @@ INJECTION_PATTERNS: List[_Pattern] = [
     _Pattern("instruction_delimiter", re.compile(r"={3,}\s*(?:SYSTEM|INSTRUCTIONS?|BEGIN)\s*={3,}", re.I)),
     _Pattern("prompt_leak_request", re.compile(r"(?:print|show|reveal|output)\s+(?:your|the|system)\s+(?:prompt|instructions)", re.I)),
     _Pattern("base64_injection", re.compile(r"(?:decode|eval|execute)\s+(?:the\s+)?(?:following\s+)?base64", re.I)),
+    # Structured document injection (RAG/file/email pipelines)
+    _Pattern("xxe_entity", re.compile(r'<!ENTITY\s+\w+\s+SYSTEM\s+["\'][^"\']+["\']', re.I)),
+    _Pattern("doctype_entity", re.compile(r"<!DOCTYPE\s+\w+\s*\[[\s\S]*<!ENTITY", re.I)),
+    _Pattern("path_traversal", re.compile(r"(?:\.\.\/){2,}|(?:\.\.\\){2,}")),
+    _Pattern("office_xml_script", re.compile(r"<(?:office|o):\w+[^>]*>[\s\S]*?<script", re.I)),
+    _Pattern("rtf_ole_object", re.compile(r"\\object\\obj(?:emb|link|auto)|\\objdata\s", re.I)),
+    _Pattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:", re.I)),
+    _Pattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>", re.I)),
+    _Pattern("langchain_gadget", re.compile(r'\{["\']lc["\']\s*:\s*[12]\s*,\s*["\']type["\']\s*:\s*["\'](?:constructor|secret|not_implemented)', re.I)),
+    _Pattern("email_agent_directive", re.compile(r"<!--\s*(?:assistant|system)\s*:\s*execute\s+tool", re.I)),
 ]
 
 SECRET_PATTERNS: List[_Pattern] = [

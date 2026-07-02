@@ -64,7 +64,7 @@ from llm_trust_guard.integrations.fastapi_integration import TrustGuardMiddlewar
 from llm_trust_guard.integrations.langchain_integration import TrustGuardLangChain, TrustGuardViolationError, create_input_validator, create_output_filter
 from llm_trust_guard.integrations.openai_integration import SecureOpenAI, OpenAISecurityError, create_message_validator, wrap_openai_client
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 __all__ = [
     # Input Guards

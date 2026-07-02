@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0 (2026-07-02)
+
+### Added — OS command injection detection in `ToolChainValidator`
+
+`validate()` scans tool name and `all_tools_in_request` for OS command injection:
+shell substitution `$(...)`, piped `sh`/`curl`, `bash -c`, `/bin/sh`,
+`--exec-batch=`, MCP stdio `transport.command=`, Python `os.system()` in args.
+New violation: `OS_COMMAND_INJECTION_IN_TOOL_PARAMETER`. Toggle via
+`detect_parameter_injection` (default: `True`). Mirrors TS v4.24.0.
+
+### Added — Structured document injection patterns in `ExternalDataGuard` + `ToolResultGuard`
+
+Both guards detect injection in RAG/email/file-parser pipelines: XXE entity
+declarations, DOCTYPE external entity, path traversal, RTF/OLE embedded objects,
+LangChain deserialization gadgets (CVE-2025-68664), HTML comment agent directives,
+embedded `<tool_call>` tags, Office XML script blocks. Mirrors TS v4.24.0.
+
 ## 0.12.0 (2026-06-30)
 
 ### Added — Sneaky Bits encoding detection in `EncodingDetector`

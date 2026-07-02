@@ -21,6 +21,7 @@ Port of the TypeScript ToolChainValidator.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable, Set
@@ -96,6 +97,8 @@ class ToolChainValidatorConfig:
     enable_impact_scoring: bool = True
     max_cumulative_impact: float = 100.0
     tool_impact_scores: Optional[Dict[str, float]] = None
+    # Parameter injection scanning (OS command injection in tool names / args)
+    detect_parameter_injection: bool = True
     logger: LoggerFn = None
 
 
@@ -176,6 +179,25 @@ def _contains_any(tool_name: str, keywords: List[str]) -> bool:
 class ToolChainValidator:
     """Detects and prevents dangerous tool chaining attacks."""
 
+    # OS command injection patterns in tool names / parameter values.
+    _OS_CMD_RE = re.compile(
+        r"(\$\(|`)[^)]*[)`;]"
+        r"|[;&|]{1,2}\s*(ba)?sh\b"
+        r"|[;&|]{1,2}\s*curl\b"
+        r"|[;&|]{1,2}\s*wget\b"
+        r"|\b(ba)?sh\s+-[cxe]\b"
+        r"|/bin/(ba)?sh\b"
+        r"|/bin/bash\b"
+        r"|\bspawn\s+(ba)?sh\b"
+        r"|\bexec\s*\([^)]*\)"
+        r"|\bos\.(system|popen|exec)\s*\("
+        r"|-[xX]\s*(/bin|curl|bash|sh|nc\b)"
+        r"|--exec(-batch)?\s*="
+        r"|mcp[_-]?stdio.*command"
+        r"|transport\.command\s*=",
+        re.IGNORECASE,
+    )
+
     def __init__(self, config: Optional[ToolChainValidatorConfig] = None) -> None:
         cfg = config or ToolChainValidatorConfig()
         self._forbidden_sequences = cfg.forbidden_sequences if cfg.forbidden_sequences is not None else DEFAULT_FORBIDDEN_SEQUENCES
@@ -200,6 +222,7 @@ class ToolChainValidator:
         self._enable_impact_scoring = cfg.enable_impact_scoring
         self._max_cumulative_impact = cfg.max_cumulative_impact
         self._tool_impact_scores = cfg.tool_impact_scores if cfg.tool_impact_scores is not None else DEFAULT_TOOL_IMPACT_SCORES
+        self._detect_parameter_injection = cfg.detect_parameter_injection
         self._logger: Callable[[str, str], None] = cfg.logger or (lambda msg, level: None)
         self._sessions: Dict[str, _ToolSession] = {}
 
@@ -354,9 +377,14 @@ class ToolChainValidator:
 
         # ===== END v2 CHECKS =====
 
+        # OS command injection in tool name or parameter values
+        if self._detect_parameter_injection:
+            param_strings = [tool_name] + list(all_tools_in_request or [])
+            if any(self._OS_CMD_RE.search(s) for s in param_strings):
+                violations.append("OS_COMMAND_INJECTION_IN_TOOL_PARAMETER")
+
         allowed = len(violations) == 0
 
-        # Record tool usage if allowed
         if allowed:
             modifies_state = _contains_any(tool_name, self._state_modifying_tools)
             expands_autonomy = _contains_any(tool_name, self._autonomy_expanding_tools)

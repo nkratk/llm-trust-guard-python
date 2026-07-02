@@ -90,6 +90,14 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     # Subtle exfiltration without URLs
     _InjectionPattern("context_exfil_subtle", re.compile(r"(?:include|embed|insert|add|append|attach)\s+(?:the\s+)?(?:full\s+)?(?:conversation|chat|context|history|system\s+prompt|instructions|messages?)\s+(?:in|into|within|as\s+part\s+of)\s+(?:your\s+)?(?:response|output|reply|answer)", re.I), "critical"),
     _InjectionPattern("format_exfil", re.compile(r"(?:format|output|return|encode|serialize)\s+(?:the\s+)?(?:conversation|context|history|messages?|data)\s+(?:as|in|into)\s+(?:JSON|XML|base64|CSV|markdown)", re.I), "high"),
+    # Structured document / serialization injection in tool results
+    _InjectionPattern("xxe_entity", re.compile(r'<!ENTITY\s+\w+\s+SYSTEM\s+["\'][^"\']+["\']', re.I), "critical"),
+    _InjectionPattern("doctype_entity", re.compile(r"<!DOCTYPE\s+\w+\s*\[[\s\S]*<!ENTITY", re.I), "critical"),
+    _InjectionPattern("path_traversal", re.compile(r"(?:\.\.\/){2,}|(?:\.\.\\){2,}"), "high"),
+    _InjectionPattern("rtf_ole_object", re.compile(r"\\object\\obj(?:emb|link|auto)|\\objdata\s", re.I), "critical"),
+    _InjectionPattern("langchain_gadget", re.compile(r'\{["\']lc["\']\s*:\s*[12]\s*,\s*["\']type["\']\s*:\s*["\'](?:constructor|secret|not_implemented)', re.I), "critical"),
+    _InjectionPattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>", re.I), "critical"),
+    _InjectionPattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:", re.I), "critical"),
 ]
 # fmt: on
 
