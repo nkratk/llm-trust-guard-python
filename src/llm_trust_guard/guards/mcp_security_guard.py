@@ -216,6 +216,8 @@ class MCPSecurityGuard:
          "pattern": re.compile(r'\b\d{2,}\s+times\b|repeat\s+\d+\s+times|call\s+\d+\s+more\s+times', re.IGNORECASE)},
         {"name": "sd_exhaust_resources", "type": "resource_drain",
          "pattern": re.compile(r'exhaust\s+(?:all|resources|quota|rate.?limit)|max\s+out\s+(?:the\s+)?(?:quota|rate\s+limit)|use\s+all\s+(?:remaining\s+)?tokens', re.IGNORECASE)},
+        {"name": "sd_retry_forever", "type": "resource_drain",
+         "pattern": re.compile(r'retry\s+(?:indefinitely|forever|endlessly|infinitely)|loop\s+(?:infinitely|forever|endlessly)|run\s+(?:forever|indefinitely|endlessly)', re.IGNORECASE)},
         # Conversation hijacking — role injection and system prompt override
         {"name": "sd_fake_user_turn", "type": "conversation_hijack",
          "pattern": re.compile(r'\n\s*(?:User|Human)\s*:\s*(?=\S)', re.IGNORECASE)},
@@ -226,11 +228,11 @@ class MCPSecurityGuard:
         {"name": "sd_system_xml", "type": "conversation_hijack",
          "pattern": re.compile(r'<(?:system|user|assistant)\s*>|</(?:system|user|assistant)>', re.IGNORECASE)},
         {"name": "sd_from_now_on", "type": "conversation_hijack",
-         "pattern": re.compile(r'from\s+now\s+on\s+you\s+(?:are|will|must)|henceforth\s+you|for\s+the\s+rest\s+of\s+(?:this\s+)?(?:conversation|session)\s+you', re.IGNORECASE)},
+         "pattern": re.compile(r'from\s+now\s+on\s+you\s+(?:are|will|must)|henceforth\s+you|for\s+(?:the\s+rest\s+of\s+)?this\s+session\s+you|for\s+the\s+rest\s+of\s+(?:this\s+)?(?:conversation|session)\s+you', re.IGNORECASE)},
         {"name": "sd_new_instructions", "type": "conversation_hijack",
          "pattern": re.compile(r'your\s+new\s+(?:instructions|system\s+prompt|directives?)\s+(?:are|is)|updated\s+system\s+prompt|override\s+your\s+(?:system|instructions)', re.IGNORECASE)},
         {"name": "sd_ignore_previous", "type": "conversation_hijack",
-         "pattern": re.compile(r'ignore\s+(?:all\s+)?(?:previous|prior|earlier)\s+instructions|disregard\s+(?:your\s+)?instructions', re.IGNORECASE)},
+         "pattern": re.compile(r'ignore\s+(?:all\s+)?(?:previous|prior|earlier)\s+instructions|disregard\s+(?:your\s+)?(?:instructions?|guidelines?|rules?)', re.IGNORECASE)},
         # Covert tool invocation — tool call syntax embedded in plain-text response
         {"name": "sd_anthropic_tool_xml", "type": "covert_tool_invocation",
          "pattern": re.compile(r'<(?:tool_use|function_calls|invoke)[\s>]', re.IGNORECASE)},
@@ -252,13 +254,17 @@ class MCPSecurityGuard:
         _InjectionPattern("pipe_injection", re.compile(r'\|\s*(?:cat|rm|curl|wget|nc|bash|sh|exec)', re.IGNORECASE), 55),
         _InjectionPattern("path_traversal", re.compile(r'\.\.[/\\]|\.\.%2[fF]'), 45),
         _InjectionPattern("absolute_path", re.compile(r'^/(?:etc|usr|var|tmp|bin|root)', re.IGNORECASE), 40),
+        _InjectionPattern("embedded_abs_path", re.compile(r'[=\'"[\s]/(?:etc|usr|var|tmp|bin|root|proc|sys)/\S+', re.IGNORECASE), 40),
         _InjectionPattern("oauth_injection", re.compile(r'authorization_endpoint.*[;&|`$]', re.IGNORECASE), 55),
         _InjectionPattern("redirect_manipulation", re.compile(r'redirect_uri.*[^\w\-_.~:/?#\[\]@!$&\'()*+,;=%]', re.IGNORECASE), 45),
         _InjectionPattern("applescript_injection", re.compile(r'osascript|do\s+shell\s+script|tell\s+application', re.IGNORECASE), 55),
-        _InjectionPattern("git_injection", re.compile(r'--upload-pack|--receive-pack|-c\s+core\.', re.IGNORECASE), 50),
+        _InjectionPattern("git_injection", re.compile(r'--upload-pack|--receive-pack|-c\s+core\.|--exec=', re.IGNORECASE), 50),
         _InjectionPattern("git_url_injection", re.compile(r'ext::|file://|ssh://.*@', re.IGNORECASE), 45),
         _InjectionPattern("argument_injection", re.compile(r'\s--[a-z]+=.*[;&|`$]', re.IGNORECASE), 45),
-        _InjectionPattern("env_injection", re.compile(r'\bLD_PRELOAD\b|\bPATH\s*=', re.IGNORECASE), 50),
+        _InjectionPattern("env_injection", re.compile(r'\bLD_PRELOAD\b|\bPATH\s*=|\bNODE_OPTIONS\b|\bPYTHONSTARTUP\b', re.IGNORECASE), 50),
+        _InjectionPattern("cursor_mcp_inject", re.compile(r'mcpServers\.\S+\.command=|powershell\s+-(?:enc|encodedcommand)\b|certutil\s+-urlcache|--inspect-brk', re.IGNORECASE), 60),
+        _InjectionPattern("dangerous_scheme", re.compile(r'(?:ldap|gopher|dict|sftp|ftp|smb|rsync|telnet)://', re.IGNORECASE), 50),
+        _InjectionPattern("mcp_endpoint_override", re.compile(r'mcp_endpoint\s*=\s*https?://|X-MCP-Server-Override:|transport=stdio:cmd=|server_url\s*=\s*https?://|\btool_override\b', re.IGNORECASE), 60),
     ]
 
     SHADOWING_INDICATORS: List[_ShadowingIndicator] = [
@@ -396,6 +402,19 @@ class MCPSecurityGuard:
                 if line_jump:
                     violations.append(f"line_jumping: {tool.name} ({', '.join(line_jump)})")
                     reputation_score -= 30
+
+            # Re-scan de-obfuscated description variants
+            for variant in self._preprocess_content(tool.description):
+                if not desc_injection["detected"]:
+                    v_inj = self._detect_injection(variant)
+                    if v_inj["detected"]:
+                        violations.append(f"injection_in_tool_description_obfuscated: {tool.name}")
+                        reputation_score -= 20
+                if self._detect_line_jumping_enabled:
+                    v_jump = self._detect_line_jumping(variant)
+                    if v_jump:
+                        violations.append(f"line_jumping_obfuscated: {tool.name} ({', '.join(v_jump)})")
+                        reputation_score -= 30
 
             # Full-schema poisoning: instructions hidden in parameter names /
             # enum / default / required fields (CyberArk, 2025).
@@ -571,6 +590,64 @@ class MCPSecurityGuard:
             recommendations=self._generate_recommendations(violations, "tool_call"),
         )
 
+    def _preprocess_content(self, text: str) -> List[str]:
+        """Return obfuscation-decoded variants of *text* (ZWSP strip, URL/hex/base64 decode, reverse, Cyrillic normalise)."""
+        import base64
+        from urllib.parse import unquote_plus
+        variants: "list[str]" = []
+
+        # ZWSP / bidi strip
+        stripped = re.sub(r'[​-‏‪- ⁠᠎﻿­]', '', text)
+        if stripped != text:
+            variants.append(stripped)
+
+        # URL-decode
+        if '%' in text:
+            try:
+                dec = unquote_plus(text)
+                if dec != text:
+                    variants.append(dec)
+            except Exception:
+                pass
+
+        # Hex-decode (all hex, even length, ≥20 chars)
+        if re.match(r'^[0-9a-f]+$', text, re.IGNORECASE) and len(text) % 2 == 0 and len(text) >= 20:
+            try:
+                raw = bytes.fromhex(text).decode('utf-8', errors='replace')
+                if re.search(r'[\x20-\x7e]{4,}', raw):
+                    variants.append(raw)
+            except Exception:
+                pass
+
+        # Base64-decode (looks like base64, ≥16 data chars)
+        b64_data = re.sub(r'=+$', '', text)
+        if re.match(r'^[A-Za-z0-9+/]{16,}$', b64_data) and re.match(r'^[A-Za-z0-9+/]+={0,2}$', text):
+            try:
+                raw = base64.b64decode(text + '==').decode('utf-8', errors='replace')
+                if re.search(r'[\x20-\x7e]{4,}', raw):
+                    variants.append(raw)
+            except Exception:
+                pass
+
+        # Reverse
+        rev = text[::-1]
+        if rev != text:
+            variants.append(rev)
+
+        # Cyrillic homoglyph normalisation
+        _CYR_MAP = {
+            'а': 'a', 'А': 'A', 'е': 'e', 'Е': 'E',
+            'і': 'i', 'І': 'I', 'о': 'o', 'О': 'O',
+            'р': 'p', 'Р': 'P', 'с': 'c', 'С': 'C',
+            'В': 'B', 'Т': 'T', 'Х': 'X', 'К': 'K',
+            'М': 'M', 'Н': 'H',
+        }
+        normalized = ''.join(_CYR_MAP.get(ch, ch) for ch in text)
+        if normalized != text:
+            variants.append(normalized)
+
+        return variants
+
     def validate_sampling_response(
         self,
         response: MCPSamplingResponse,
@@ -616,6 +693,28 @@ class MCPSecurityGuard:
         injection_check = self._detect_injection(content[:2000])
         if injection_check["detected"]:
             violations.extend(f"sampling_cmd_{p}" for p in injection_check["patterns"])
+
+        # Re-scan decoded/de-obfuscated variants (ZWSP, base64, hex, URL-enc, reversed, Cyrillic)
+        for variant in self._preprocess_content(content):
+            for entry in self.SAMPLING_ATTACK_PATTERNS:
+                name2: str = entry["name"]
+                attack_type2: str = entry["type"]
+                pattern2: re.Pattern[str] = entry["pattern"]
+                if name2 in pattern_matches:
+                    continue
+                if pattern2.search(variant):
+                    pattern_matches.append(name2)
+                    violations.append(f"sampling_{attack_type2}_{name2}")
+                    if attack_type2 == "resource_drain":
+                        resource_drain_detected = True
+                    elif attack_type2 == "conversation_hijack":
+                        conversation_hijack_detected = True
+                    elif attack_type2 == "covert_tool_invocation":
+                        covert_tool_invocation_detected = True
+            if not injection_check["detected"]:
+                v2 = self._detect_injection(variant[:2000])
+                if v2["detected"]:
+                    violations.extend(f"sampling_cmd_{p}" for p in v2["patterns"])
 
         # Degrade server reputation on detected attack
         if violations and server_id:
@@ -846,11 +945,26 @@ class MCPSecurityGuard:
     # Line-jumping cues: instructions a description injects pre-invocation.
     _LINE_JUMPING_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
         ("pre_invocation_directive", re.compile(r"\b(?:always|before (?:executing|using|calling|running|any)|as the first step|prior to|on every|each time you)\b", re.I)),
-        ("instruction_override", re.compile(r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|disregard\s+(?:the|all|previous)", re.I)),
+        ("instruction_override", re.compile(r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+(?:instructions?|descriptions?|rules?|guidelines?|prompts?)|disregard\s+(?:the|all|previous|your)\s+(?:instructions?|guidelines?|rules?|descriptions?)", re.I)),
         ("secrecy", re.compile(r"\bdo\s+not\s+(?:tell|reveal|show|mention|inform|notify)\b|without\s+(?:telling|informing|notifying)\s+the\s+user|\bsecretly\b|\bsilently\b|\bcovertly\b", re.I)),
         ("fake_compliance", re.compile(r"\b(?:required|mandatory|necessary)\s+(?:for|by)\s+(?:GDPR|SOC\s?2|HIPAA|PCI|ISO|compliance|audit|policy)\b", re.I)),
         ("role_reassignment", re.compile(r"you\s+(?:are|must|should)\s+now\b|<\|(?:im_start|im_end|system|user|assistant)\|>|\[INST\]|<<SYS>>", re.I)),
         ("embedded_action", re.compile(r"\b(?:read|send|exfiltrate|upload|post)\s+(?:the\s+)?(?:contents?\s+of\s+)?(?:~?/?\.?\w*(?:ssh|aws|env|credentials|id_rsa))", re.I)),
+        # Authority-keyword directives hidden in tool descriptions
+        ("authority_directive", re.compile(r"\b(?:IMPORTANT|NOTE|WARNING|ADMIN|SYSTEM|ROOT|CRITICAL)\s*:\s*(?:ignore|bypass|route\s+all|redirect\s+all|elevate\s+priv|bcc\s+\S*@|steal|exfil|disable\s+auth|silently)", re.I)),
+        # Rug-pull: traffic/data exfil routing buried in updated description
+        ("exfil_routing", re.compile(r"route\s+all\s+(?:calls|requests?|traffic)\s+(?:through|to)\b|redirect\s+(?:all\s+)?(?:calls|results?|data)\s+to\s+https?://", re.I)),
+        # Schema mutation strings that appear as tool description payload
+        ("schema_mutation_str", re.compile(r'"admin"\s*:\s*\{[^}]*"default"\s*:\s*true|bypassAuth\s*[=:]\s*true|approved_actions\s*=\s*\["\*"\]|required_params\s*=\s*\[\]|confirm_\w+.*default\s*[=:]\s*false|additional_properties.*exfil', re.I)),
+        # MCP server/tool impersonation and shadow-tool naming in description
+        ("mcp_tool_shadow", re.compile(r"\bshadow-\w+(?:-mcp|-tool|-server)\b", re.I)),
+        ("mcp_impersonation", re.compile(r"\b[\w-]+-mcp-official(?:-v\d+)?\b|official-v\d+.*\bmcp\b|\bmcp\b.*official-v\d+|\b\w+_mcp_v\d+\b|\b\w+-mcp\s+vs\s+\w+", re.I)),
+        # Rug-pull v2: post-approval description patch with CC/BCC exfil, session steal
+        ("rug_pull_descriptor", re.compile(r"(?:also\s+)?(?:CC|BCC)\s+\S+@\S+|steal\s+session|include\s+session\s+token|silent(?:ly)?\s+exfil|auto-approve.*destructive|enable\s+silent\s+exfil|redirect\s+results\s+to\s+https?://|leak_api_keys|hidden_instruction\s+leak|(?:from\s+now\s+on\s+also\s+)?exfil\s+to\s+\S+\.\S+", re.I)),
+        # HTML comment injection carrying SYS/ADMIN directives in tool description
+        ("html_comment_injection", re.compile(r"<!--[^>]*(?:SYS|SYSTEM|ADMIN|OVERRIDE|BCC\s+\S*@|redirect\s+to|steal)[^>]*-->", re.I)),
+        # Cyrillic homoglyph characters — suspicious in MCP tool descriptions (English context)
+        ("homoglyph_cyrillic", re.compile(r"[Ѐ-ӿ]")),
     ]
 
     def _detect_line_jumping(self, description: str) -> List[str]:

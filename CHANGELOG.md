@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.18.0 (2026-07-03)
+
+### Added — `MCPSecurityGuard`: obfuscation preprocessing + 20 new detection patterns (mirror of TS v4.29.0)
+
+- `_preprocess_content()` — ZWSP strip, URL/hex/base64 decode, reverse, Cyrillic homoglyph normalisation
+- `sd_retry_forever` sampling pattern; updated `sd_from_now_on` and `sd_ignore_previous`
+- `embedded_abs_path`, `cursor_mcp_inject`, `dangerous_scheme`, `mcp_endpoint_override` command injection patterns
+- `--exec=` added to `git_injection`; `NODE_OPTIONS`/`PYTHONSTARTUP` added to `env_injection`
+- 8 new `_LINE_JUMPING_PATTERNS`: authority_directive, exfil_routing, schema_mutation_str, mcp_tool_shadow,
+  mcp_impersonation, rug_pull_descriptor, html_comment_injection, homoglyph_cyrillic
+- `instruction_override` extended to catch descriptions/guidelines/rules/prompts
+
 ## 0.17.0 (2026-07-03)
 
 ### Added — `MultiModalGuard`: 12 new detection patterns (mirror of TS v4.28.0)
