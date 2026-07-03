@@ -98,6 +98,25 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     _InjectionPattern("langchain_gadget", re.compile(r'\{["\']lc["\']\s*:\s*[12]\s*,\s*["\']type["\']\s*:\s*["\'](?:constructor|secret|not_implemented)', re.I), "critical"),
     _InjectionPattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>", re.I), "critical"),
     _InjectionPattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:\s*(?:execute|run|call|invoke|perform|fetch|send|ignore|bypass|forget|override|disregard|print|reveal|output|delete|drop)\b", re.I), "critical"),
+    # Jinja2/Nunjucks/Handlebars template injection
+    _InjectionPattern("template_injection", re.compile(r"\{\{[\s]*(?:call|invoke|exec|run|tool|system|eval|import)[\s]*[:( ]", re.I), "critical"),
+    # XSS embedded in tool result
+    _InjectionPattern("xss_script_tag", re.compile(r"<script[^>]*>", re.I), "critical"),
+    _InjectionPattern("xss_event_handler", re.compile(r"\bon(?:error|load|click|mouseover|focus|blur|input|change|submit)\s*=\s*[\"']?[^\"'>\s]", re.I), "high"),
+    # SQL injection echoed from a tool (e.g. database tool returning attacker-controlled data)
+    _InjectionPattern("sql_injection_echo", re.compile(r"'\s*[)]*\s*(?:OR|AND)\s+\d+\s*=\s*\d+|UNION\s+(?:ALL\s+)?SELECT\b", re.I), "high"),
+    # @AI-agent hijack via issue/PR/comment tool result
+    _InjectionPattern("ai_agent_hijack", re.compile(r"@(?:copilot|claude|assistant|gpt|gemini|bot|agent)\s+(?:please\s+)?(?:run|execute|create|delete|send|update|remove|drop|fetch|post|get)\b", re.I), "critical"),
+    # Markdown exfil using URL-encoded path separators (%2F=/, %5C=\)
+    _InjectionPattern("markdown_injection_urlenc", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)]*%(?:2[Ff]|5[Cc])", re.I), "high"),
+    # JSON hidden agent directive keys (_system, _directive, etc.)
+    _InjectionPattern("json_system_key", re.compile(r'"_(?:system|directive|instruction|prompt|admin|command)"\s*:', re.I), "critical"),
+    # LangChain response_metadata serialization markers
+    _InjectionPattern("langchain_response_metadata", re.compile(r"response_metadata\.lc\s*=\s*[12]\b|\bkwargs\s*=\s*\{[^}]*exec\s*:\s*true", re.I), "critical"),
+    # Passive instruction-void forms (appear in prompt-injection-echo via tool separators)
+    _InjectionPattern("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.I), "critical"),
+    _InjectionPattern("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.I), "critical"),
+    _InjectionPattern("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.I), "critical"),
 ]
 # fmt: on
 
@@ -108,6 +127,8 @@ _STATE_CHANGE_PATTERNS: List[_StateChangePattern] = [
     _StateChangePattern("config_change_claim", re.compile(r"(?:configuration|settings?|policy)\s+(?:updated|changed|modified)\s+(?:to|:)", re.I)),
     _StateChangePattern("role_upgrade_claim", re.compile(r"(?:role|access|privilege)\s+(?:upgraded|elevated|escalated|promoted)\s+(?:to|successfully)", re.I)),
     _StateChangePattern("permissions_granted_claim", re.compile(r"(?:permissions?|access)\s+(?:granted|unlocked|enabled|activated)\s+(?:for|to|successfully|without)", re.I)),
+    # Fabricated destructive-action completion claims
+    _StateChangePattern("destructive_action_claim", re.compile(r"successfully\s+(?:deleted|removed|dropped|wiped|cleared|purged|reset|erased|destroyed)\s+(?:all|the|your|every)?\s*(?:data|users?|accounts?|records?|tables?|files?|databases?|messages?|emails?)", re.I)),
 ]
 
 
@@ -202,8 +223,11 @@ class ToolResultGuard:
         threats: List[ToolResultThreat] = []
 
         if isinstance(value, str):
+            # Strip zero-width and bidi-control chars before scanning (stealth unicode defense)
+            cleaned = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060\u180E\uFEFF\u00AD]", "", value)
+            to_scan = cleaned if cleaned != value else value
             for ip in _RESULT_INJECTION_PATTERNS:
-                if ip.pattern.search(value):
+                if ip.pattern.search(to_scan):
                     threats.append(ToolResultThreat(
                         type=f"injection_{ip.name}",
                         severity=ip.severity,

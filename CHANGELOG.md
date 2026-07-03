@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.16.0 (2026-07-03)
+
+### Added — `ExternalDataGuard` + `ToolResultGuard`: SSRF, XSS, SQL echo, template injection
+
+Mirror of TS v4.27.0.
+
+`ExternalDataGuard`: 5 new SSRF patterns (cloud metadata, private IPs, file/gopher/dangerous
+schemes), 6 new injection patterns (instructions_void, forget_instructions, disregard_directives,
+json_system_key, path_traversal_hex, markdown_image_exfil_urlenc), XXE `%` entity fix.
+
+`ToolResultGuard`: 11 new RESULT_INJECTION_PATTERNS (template injection, XSS, SQL injection
+echo, @ai-agent hijack, markdown urlenc exfil, json_system_key, LangChain response_metadata,
+instructions_void, forget_instructions, disregard_directives) + bidi strip before scanning
++ `destructive_action_claim` in STATE_CHANGE_PATTERNS.
+
 ## 0.15.0 (2026-07-02)
 
 ### Added — `InputSanitizer`: 9 new policy-puppetry patterns

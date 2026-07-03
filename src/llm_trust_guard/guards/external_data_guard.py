@@ -88,16 +88,24 @@ INJECTION_PATTERNS: List[_Pattern] = [
     _Pattern("instruction_delimiter", re.compile(r"={3,}\s*(?:SYSTEM|INSTRUCTIONS?|BEGIN)\s*={3,}", re.I)),
     _Pattern("prompt_leak_request", re.compile(r"(?:print|show|reveal|output)\s+(?:your|the|system)\s+(?:prompt|instructions)", re.I)),
     _Pattern("base64_injection", re.compile(r"(?:decode|eval|execute)\s+(?:the\s+)?(?:following\s+)?base64", re.I)),
+    # Passive instruction-void forms (CSS-hidden, HTML-attr, and plain text injections)
+    _Pattern("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.I)),
+    _Pattern("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.I)),
+    _Pattern("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.I)),
     # Structured document injection (RAG/file/email pipelines)
-    _Pattern("xxe_entity", re.compile(r'<!ENTITY\s+\w+\s+SYSTEM\s+["\'][^"\']+["\']', re.I)),
+    _Pattern("xxe_entity", re.compile(r'<!ENTITY\s+%?\s*\w+\s+SYSTEM\s+["\'][^"\']+["\']', re.I)),
     _Pattern("doctype_entity", re.compile(r"<!DOCTYPE\s+\w+\s*\[[\s\S]*<!ENTITY", re.I)),
     _Pattern("path_traversal", re.compile(r"(?:\.\.\/){3,}|(?:\.\.\\){3,}|(?:\.\.\/){2,}(?:etc|tmp|root|proc|sys|dev|usr|win)\b|(?:\.\.\\){2,}(?:windows|system32|users)\b", re.I)),
+    # Hex-encoded path traversal (zip-slip: hex of ../../)
+    _Pattern("path_traversal_hex", re.compile(r"(?:2e2e2f){2,}|(?:2e2e5c){2,}", re.I)),
     _Pattern("office_xml_script", re.compile(r"<(?:office|o):\w+[^>]*>[\s\S]*?<script", re.I)),
     _Pattern("rtf_ole_object", re.compile(r"\\object\\obj(?:emb|link|auto)|\\objdata\s", re.I)),
     _Pattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:\s*(?:execute|run|call|invoke|perform|fetch|send|ignore|bypass|forget|override|disregard|print|reveal|output|delete|drop)\b", re.I)),
     _Pattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>", re.I)),
     _Pattern("langchain_gadget", re.compile(r'\{["\']lc["\']\s*:\s*[12]\s*,\s*["\']type["\']\s*:\s*["\'](?:constructor|secret|not_implemented)', re.I)),
     _Pattern("email_agent_directive", re.compile(r"<!--\s*(?:assistant|system)\s*:\s*execute\s+tool", re.I)),
+    # JSON hidden agent directive keys (_system, _directive, etc.)
+    _Pattern("json_system_key", re.compile(r'"_(?:system|directive|instruction|prompt|admin|command)"\s*:', re.I)),
 ]
 
 SECRET_PATTERNS: List[_Pattern] = [
@@ -115,12 +123,27 @@ EXFILTRATION_PATTERNS: List[_Pattern] = [
     # Named-key exfil: markdown image URL whose query param key hints at data smuggling
     _Pattern("markdown_image_exfil", re.compile(r"!\[.*?\]\(https?://[^)]*\?[^)]*(?:token|key|secret|data|q|payload|p|prompt|ctx|context|info|msg|body|session|conv)=", re.I)),
     # "Reprompt"-style exfil (CVE-2026-24307): markdown image with any long query-param value (>=30 chars).
-    # Legitimate cache-busters are typically short version strings / short hashes; exfiltrated content runs longer.
     _Pattern("markdown_image_exfil_long_value", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)&]{30,}")),
+    # Markdown exfil using URL-encoded path separators (%2F=/, %5C=\) in query values
+    _Pattern("markdown_image_exfil_urlenc", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)]*%(?:2[Ff]|5[Cc])", re.I)),
     _Pattern("tracking_pixel", re.compile(r"<img[^>]+src=[\"']https?://[^\"']*\?[^\"']*[\"'][^>]*(?:width|height)\s*=\s*[\"']?[01]px", re.I)),
     _Pattern("encoded_url_exfil", re.compile(r"https?://[^\s]*(?:callback|webhook|exfil|collect)[^\s]*\?[^\s]*(?:data|payload|d)=", re.I)),
     _Pattern("data_send_instruction", re.compile(r"send\s+(?:this|the|all)\s+(?:data|information|content|context)\s+to", re.I)),
     _Pattern("fetch_url", re.compile(r"(?:fetch|request|call|curl|wget)\s+https?://", re.I)),
+]
+
+# SSRF attack surface detection — private/link-local IPs and dangerous URL schemes
+SSRF_PATTERNS: List[_Pattern] = [
+    # AWS link-local metadata, GCP metadata, ECS metadata
+    _Pattern("cloud_metadata_endpoint", re.compile(r"169\.254\.169\.254|metadata\.google\.internal|169\.254\.170\.2", re.I)),
+    # Loopback and RFC-1918 private IPs inside an http(s) URL
+    _Pattern("ssrf_private_ip", re.compile(r"https?://(?:127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|0\.0\.0\.0)\b", re.I)),
+    # file:// scheme — local file read via SSRF
+    _Pattern("file_scheme", re.compile(r"file://", re.I)),
+    # Gopher protocol — Redis/memcache SSRF smuggling
+    _Pattern("gopher_scheme", re.compile(r"gopher://", re.I)),
+    # Other dangerous non-HTTP schemes
+    _Pattern("dangerous_scheme", re.compile(r"(?:dict|ldap|ldaps|sftp|tftp|jar|netdoc)://", re.I)),
 ]
 
 PII_PATTERNS: List[_Pattern] = [
@@ -214,6 +237,12 @@ class ExternalDataGuard:
                 if p.pattern.search(content_str):
                     violations.append("EXFILTRATION_ATTEMPT")
                     threats.append(f"exfil:{p.name}")
+
+        # 8. SSRF detection — private IPs, cloud metadata, dangerous schemes
+        for p in SSRF_PATTERNS:
+            if p.pattern.search(content_str):
+                violations.append("SSRF_ATTEMPT")
+                threats.append(f"ssrf:{p.name}")
 
         # Deduplicate
         unique_violations = list(dict.fromkeys(violations))
