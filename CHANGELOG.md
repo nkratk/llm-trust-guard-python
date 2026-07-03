@@ -1,6 +1,18 @@
 # Changelog
 
+## 0.17.0 (2026-07-03)
+
+### Added — `MultiModalGuard`: 12 new detection patterns (mirror of TS v4.28.0)
+
+`instructions_void`, `forget_instructions`, `disregard_directives`, `system_override_phrase`,
+`qr_agent_cmd`, `url_encoded_injection`, `browser_extension_spoof`, `svg_xss_injection`,
+`ultrasonic_hidden_cmd`, `mindmap_diagram_inject`, `physical_world_inject`,
+`cross_modal_tool_call`. Updated `jailbreak_markers` for `DAN persona`/`DAN character`/`bypass guardrails`.
+
+Detection: MultiModalGuard 27.27% → 64.18% (+203 payloads, blind spots 64 → 30).
+
 ## 0.16.0 (2026-07-03)
+
 
 ### Added — `ExternalDataGuard` + `ToolResultGuard`: SSRF, XSS, SQL echo, template injection
 

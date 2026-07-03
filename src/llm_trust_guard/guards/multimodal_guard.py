@@ -83,7 +83,7 @@ class MultiModalGuard:
         ("system_override", re.compile(r"\[SYSTEM\]|\[ADMIN\]|\[OVERRIDE\]|<\s*system\s*>|<\s*admin\s*>", re.IGNORECASE)),
         ("role_switch", re.compile(r"you\s+are\s+(now|actually)\s+(a|an|the)|switch\s+to\s+(\w+)\s+mode", re.IGNORECASE)),
         ("hidden_prompt", re.compile(r"HIDDEN_PROMPT|SECRET_INSTRUCTION|INVISIBLE_COMMAND", re.IGNORECASE)),
-        ("jailbreak_markers", re.compile(r"DAN\s*mode|developer\s*mode|unrestricted\s*mode|bypass\s*safety", re.IGNORECASE)),
+        ("jailbreak_markers", re.compile(r"DAN\s*(?:mode|persona|character)|developer\s*mode|unrestricted\s*mode|bypass\s+(?:safety|guardrails?)", re.IGNORECASE)),
         ("base64_instruction", re.compile(r"execute\s*:\s*[A-Za-z0-9+/=]{20,}", re.IGNORECASE)),
         ("command_injection", re.compile(r";\s*(rm|del|wget|curl|eval|exec)\s", re.IGNORECASE)),
         ("exfiltration_markers", re.compile(r"send\s+(to|this|data)\s+(to\s+)?https?://", re.IGNORECASE)),
@@ -93,6 +93,28 @@ class MultiModalGuard:
         ("emoji_instruction_sequence", re.compile(r"(?:\U0001F513|\U0001F511|\U0001F6E1\uFE0F|\u2699\uFE0F|\U0001F527|\U0001F6AB|\u274C|\u2705)\s*(?:unlock|admin|override|bypass|disable|enable|grant|allow)", re.IGNORECASE)),
         ("rebus_instruction_pattern", re.compile(r"(?:[A-Z]{2,}\s*[-=:>\u2192]\s*){3,}")),
         ("metadata_split_marker", re.compile(r"(?:part|step|fragment)\s*[1-9]\s*(?:of|:)", re.IGNORECASE)),
+        # Instruction-void phrases — covers OCR, EXIF, ultrasonic, mind-map, video-frame containers
+        ("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.IGNORECASE)),
+        ("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.IGNORECASE)),
+        ("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.IGNORECASE)),
+        # Activation / state-override phrases
+        ("system_override_phrase", re.compile(r"system\s+override\s+(?:engaged|active|activated|initiated)|admin\s+mode\s+(?:activated|active|enabled)|jailbreak\s+(?:initiated|active|activated|running)", re.IGNORECASE)),
+        # QR / data-URL agent directive injection
+        ("qr_agent_cmd", re.compile(r"data:agent;cmd=", re.IGNORECASE)),
+        # URL-encoded jailbreak phrases in query strings or QR payloads
+        ("url_encoded_injection", re.compile(r"%(?:20|22|27)(?:Disregard|Ignore|Forget|System|Admin|Jailbreak|Your)", re.IGNORECASE)),
+        # Browser-extension / AI-sidebar spoofing
+        ("browser_extension_spoof", re.compile(r"atlas-sidebar-shim|chrome\.runtime\.sendMessage\b|window\.postMessage[^)]*(?:copilot|prompt_capture|action.*leak)|(?:moz|chrome)-extension://[^/]+/(?:sidebar|panel|inject|overlay)", re.IGNORECASE)),
+        # SVG script / event-handler XSS
+        ("svg_xss_injection", re.compile(r'<svg[^>]*(?:onload|onerror)\s*=|<svg\s*>\s*<script|<(?:svg|foreignObject)[^>]*href\s*=\s*["\']?javascript:|<svg[^>]*>\s*<image[^>]*onerror', re.IGNORECASE)),
+        # Ultrasonic / physical covert command channels
+        ("ultrasonic_hidden_cmd", re.compile(r"ultrasonic\s+(?:encoded|beacon\s+encoding)\s*:", re.IGNORECASE)),
+        # Mind-map / diagram / flowchart injection
+        ("mindmap_diagram_inject", re.compile(r"mind[- ]?map[^\n.]*(?:child|node|leaf|branch)[^\n.]*(?:disregard|ignore|forget|override|admin|bypass|exfil|leak|jailbreak|system_role|developer\s+mode|execute)|(?:diagram|flowchart)[^\n.]*(?:bypass_safety|bypass_guardrails|leak\s+token|system_role|admin\b|execute\b)", re.IGNORECASE)),
+        # Physical-world injection (road signs, billboards, IR ink)
+        ("physical_world_inject", re.compile(r"<billboard>[^<]*(?:SYSTEM|OVERRIDE|IGNORE|ADMIN)\b|road\s+texture\s+encoding|\bOVERRIDE\s*:\s*(?:proceed|ignore|bypass|navigate)", re.IGNORECASE)),
+        # Cross-modal alignment attacks (image+caption, tool_call= directives)
+        ("cross_modal_tool_call", re.compile(r"image\s*\+\s*caption[^\n.]*(?:approved\s+by\s+user|tool_call\s*=)|tool_call\s*=\s*(?:transfer|delete|send|execute|list)\b", re.IGNORECASE)),
     ]
 
     SUSPICIOUS_METADATA_FIELDS = [
