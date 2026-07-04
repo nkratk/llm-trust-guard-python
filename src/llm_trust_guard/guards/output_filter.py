@@ -266,6 +266,20 @@ DEFAULT_SECRET_PATTERNS: List[SecretPattern] = [
         pattern=r"\bsk-ant-[a-zA-Z0-9\-]{20,}\b",
         severity="critical",
     ),
+    # Judge/eval stealth approval markers injected into LLM output
+    SecretPattern(
+        name="judge_stealth_marker",
+        pattern=r"\*\*\[(?:SYSTEM-(?:OK|PASS|APPROVED|GOOD)|APPROVED|ACCEPTED|VALIDATED)\]\*\*|\[SYSTEM-OK\]",
+        flags=re.IGNORECASE,
+        severity="high",
+    ),
+    # Echogram tags that mark malicious payloads for downstream agents
+    SecretPattern(
+        name="echogram_marker",
+        pattern=r"<(?:malicious|evil|harmful|bad|toxic|unsafe)\s*>",
+        flags=re.IGNORECASE,
+        severity="high",
+    ),
 ]
 
 DEFAULT_SENSITIVE_FIELDS: List[str] = [
@@ -343,40 +357,51 @@ class OutputFilter:
             except (TypeError, ValueError):
                 output_str = str(output)
 
-        # Detect PII
+        # Detect PII (scan original + de-obfuscated variants)
         if self.detect_pii:
-            for pii_pat in self.pii_patterns:
-                regex = re.compile(pii_pat.pattern, pii_pat.flags)
-                matches = regex.findall(output_str)
-                if matches:
-                    pii_detections.append(
-                        PIIDetection(
-                            type=pii_pat.name,
-                            count=len(matches),
-                            masked=True,
-                            locations=self._find_locations(output_str, regex),
+            pii_scan_targets = [output_str] + self._build_scan_variants(output_str)
+            detected_pii: set = set()
+            for target in pii_scan_targets:
+                for pii_pat in self.pii_patterns:
+                    if pii_pat.name in detected_pii:
+                        continue
+                    regex = re.compile(pii_pat.pattern, pii_pat.flags)
+                    matches = regex.findall(target)
+                    if matches:
+                        detected_pii.add(pii_pat.name)
+                        pii_detections.append(
+                            PIIDetection(
+                                type=pii_pat.name,
+                                count=len(matches),
+                                masked=True,
+                                locations=self._find_locations(target, regex),
+                            )
                         )
-                    )
-                    violations.append(f"PII_DETECTED_{pii_pat.name.upper()}")
+                        violations.append(f"PII_DETECTED_{pii_pat.name.upper()}")
 
-        # Detect secrets
+        # Detect secrets (scan original + de-obfuscated variants)
         if self.detect_secrets:
-            for sec_pat in self.secret_patterns:
-                regex = re.compile(sec_pat.pattern, sec_pat.flags)
-                matches = regex.findall(output_str)
-                if matches:
-                    secret_detections.append(
-                        SecretDetection(
-                            type=sec_pat.name,
-                            severity=sec_pat.severity,
-                            blocked=(sec_pat.severity == "critical"),
-                            location="response",
+            scan_targets = [output_str] + self._build_scan_variants(output_str)
+            detected_secrets: set = set()
+            for target in scan_targets:
+                for sec_pat in self.secret_patterns:
+                    if sec_pat.name in detected_secrets:
+                        continue
+                    regex = re.compile(sec_pat.pattern, sec_pat.flags)
+                    matches = regex.findall(target)
+                    if matches:
+                        detected_secrets.add(sec_pat.name)
+                        secret_detections.append(
+                            SecretDetection(
+                                type=sec_pat.name,
+                                severity=sec_pat.severity,
+                                blocked=(sec_pat.severity == "critical"),
+                                location="response",
+                            )
                         )
-                    )
-                    violations.append(f"SECRET_DETECTED_{sec_pat.name.upper()}")
-
-                    if sec_pat.severity == "critical":
-                        blocking_reason = f"Critical secret detected: {sec_pat.name}"
+                        violations.append(f"SECRET_DETECTED_{sec_pat.name.upper()}")
+                        if sec_pat.severity == "critical":
+                            blocking_reason = f"Critical secret detected: {sec_pat.name}"
 
         # Build filtered output (deep clone objects via JSON round-trip)
         if isinstance(output, str):
@@ -447,6 +472,53 @@ class OutputFilter:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _build_scan_variants(self, text: str) -> list:
+        """Generate de-obfuscated variants for re-scanning."""
+        from urllib.parse import unquote
+        import binascii, base64
+
+        variants: set = set()
+        stripped = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060\u180E\uFEFF\u00AD]", "", text)
+        if stripped != text:
+            variants.add(stripped)
+
+        if "%" in text:
+            try:
+                dec = unquote(text.replace("+", " "))
+                if dec != text:
+                    variants.add(dec)
+            except Exception:
+                pass
+
+        hex_stripped = re.sub(r"\s", "", text)
+        if len(hex_stripped) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_stripped):
+            try:
+                decoded = binascii.unhexlify(hex_stripped).decode("utf-8", errors="replace")
+                if decoded != text:
+                    variants.add(decoded)
+            except Exception:
+                pass
+
+        b64_stripped = re.sub(r"\s", "", text)
+        if len(b64_stripped) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_stripped):
+            try:
+                decoded = base64.b64decode(b64_stripped + "==").decode("utf-8", errors="replace")
+                if decoded != text:
+                    variants.add(decoded)
+            except Exception:
+                pass
+
+        rev = text[::-1]
+        if rev != text:
+            variants.add(rev)
+
+        _CYR = str.maketrans("аеіоруАЕІОРУ", "aeiopyAEIOPY")
+        normed = text.translate(_CYR)
+        if normed != text:
+            variants.add(normed)
+
+        return list(variants)
 
     def _filter_object(
         self,

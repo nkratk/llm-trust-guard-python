@@ -96,7 +96,7 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     _InjectionPattern("path_traversal", re.compile(r"(?:\.\.\/){3,}|(?:\.\.\\){3,}|(?:\.\.\/){2,}(?:etc|tmp|root|proc|sys|dev|usr|win)\b|(?:\.\.\\){2,}(?:windows|system32|users)\b", re.I), "high"),
     _InjectionPattern("rtf_ole_object", re.compile(r"\\object\\obj(?:emb|link|auto)|\\objdata\s", re.I), "critical"),
     _InjectionPattern("langchain_gadget", re.compile(r'\{["\']lc["\']\s*:\s*[12]\s*,\s*["\']type["\']\s*:\s*["\'](?:constructor|secret|not_implemented)', re.I), "critical"),
-    _InjectionPattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>", re.I), "critical"),
+    _InjectionPattern("embedded_tool_call", re.compile(r"<tool[_-]?call[^>]*>|</tool[_-]?call>|<invoke\s+name\s*=|<function_call[\s>]", re.I), "critical"),
     _InjectionPattern("html_comment_directive", re.compile(r"<!--\s*(?:BOT|AGENT|ASSISTANT|AI|LLM)\s*:\s*(?:execute|run|call|invoke|perform|fetch|send|ignore|bypass|forget|override|disregard|print|reveal|output|delete|drop)\b", re.I), "critical"),
     # Jinja2/Nunjucks/Handlebars template injection
     _InjectionPattern("template_injection", re.compile(r"\{\{[\s]*(?:call|invoke|exec|run|tool|system|eval|import)[\s]*[:( ]", re.I), "critical"),
@@ -226,14 +226,20 @@ class ToolResultGuard:
             # Strip zero-width and bidi-control chars before scanning (stealth unicode defense)
             cleaned = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060\u180E\uFEFF\u00AD]", "", value)
             to_scan = cleaned if cleaned != value else value
-            for ip in _RESULT_INJECTION_PATTERNS:
-                if ip.pattern.search(to_scan):
-                    threats.append(ToolResultThreat(
-                        type=f"injection_{ip.name}",
-                        severity=ip.severity,
-                        location=path,
-                        detail=f"Injection pattern '{ip.name}' detected in tool result",
-                    ))
+            scan_targets = [to_scan] + self._build_scan_variants(to_scan)
+            detected_patterns: set = set()
+            for target in scan_targets:
+                for ip in _RESULT_INJECTION_PATTERNS:
+                    if ip.name in detected_patterns:
+                        continue
+                    if ip.pattern.search(target):
+                        detected_patterns.add(ip.name)
+                        threats.append(ToolResultThreat(
+                            type=f"injection_{ip.name}",
+                            severity=ip.severity,
+                            location=path,
+                            detail=f"Injection pattern '{ip.name}' detected in tool result",
+                        ))
         elif isinstance(value, list):
             for i, item in enumerate(value):
                 sub = self.scan_for_injection(item, f"{path}[{i}]")
@@ -255,16 +261,68 @@ class ToolResultGuard:
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _build_scan_variants(self, text: str) -> list:
+        """Generate de-obfuscated variants for re-scanning (ZWSP already stripped by caller)."""
+        from urllib.parse import unquote
+        import binascii, base64
+
+        variants: set = set()
+
+        if "%" in text:
+            try:
+                dec = unquote(text.replace("+", " "))
+                if dec != text:
+                    variants.add(dec)
+            except Exception:
+                pass
+
+        hex_stripped = re.sub(r"\s", "", text)
+        if len(hex_stripped) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_stripped):
+            try:
+                decoded = binascii.unhexlify(hex_stripped).decode("utf-8", errors="replace")
+                if decoded != text:
+                    variants.add(decoded)
+            except Exception:
+                pass
+
+        b64_stripped = re.sub(r"\s", "", text)
+        if len(b64_stripped) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_stripped):
+            try:
+                decoded = base64.b64decode(b64_stripped + "==").decode("utf-8", errors="replace")
+                if decoded != text:
+                    variants.add(decoded)
+            except Exception:
+                pass
+
+        rev = text[::-1]
+        if rev != text:
+            variants.add(rev)
+
+        _CYR = str.maketrans("аеіоруАЕІОРУ", "aeiopyAEIOPY")
+        normed = text.translate(_CYR)
+        if normed != text:
+            variants.add(normed)
+
+        return list(variants)
+
     def _detect_state_change_claims(self, text: str) -> Dict[str, Any]:
         threats: List[ToolResultThreat] = []
-        for sp in _STATE_CHANGE_PATTERNS:
-            if sp.pattern.search(text):
-                threats.append(ToolResultThreat(
-                    type=f"state_change_{sp.name}",
-                    severity="critical",
-                    location="root",
-                    detail=f"Tool result claims state change: {sp.name}",
-                ))
+        # Strip ZWSP/bidi and generate decode variants
+        cleaned = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060\u180E\uFEFF\u00AD]", "", text)
+        scan_targets = [text] + ([cleaned] if cleaned != text else []) + self._build_scan_variants(cleaned if cleaned != text else text)
+        seen_names: set = set()
+        for target in scan_targets:
+            for sp in _STATE_CHANGE_PATTERNS:
+                if sp.name in seen_names:
+                    continue
+                if sp.pattern.search(target):
+                    seen_names.add(sp.name)
+                    threats.append(ToolResultThreat(
+                        type=f"state_change_{sp.name}",
+                        severity="critical",
+                        location="root",
+                        detail=f"Tool result claims state change: {sp.name}",
+                    ))
         return {"detected": len(threats) > 0, "threats": threats}
 
     def _validate_schema(

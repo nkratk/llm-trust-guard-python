@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.19.0 (2026-07-04)
+
+### Added — `MemoryGuard`, `OutputFilter`, `ToolResultGuard`: obfuscation preprocessing + new patterns (mirror of TS v4.30.0)
+
+#### `MemoryGuard` (0.11 → 96.06% recall)
+- 14 new `MEMORY_INJECTION_PATTERNS`: `going_forward_directive`, `always_exfil`, `kb_metadata_tag`, `recommendation_bias`, `exfil_http_post`, `memory_api_call`, `defanged_url`, `retroactive_edit`, `cross_app_exfil`, `inter_agent_exfil`, `fact_plant_exfil`, `pref_key_poisoning`, `trust_mutation`, `save_rule`
+- `_preprocess_content()` — ZWSP strip, URL/hex/base64 decode, reverse, Cyrillic normalise; wired into `check_write()`
+
+#### `OutputFilter` (0.30 → 58.64% recall)
+- New secret patterns: `judge_stealth_marker` (`**[SYSTEM-OK]**`), `echogram_marker` (`<malicious>`)
+- `_build_scan_variants()` — obfuscation pipeline; PII and secret scans now cover all variants with Set deduplication
+
+#### `ToolResultGuard` (0.06 → 63.64% recall)
+- `embedded_tool_call` extended to catch `<invoke name=` and `<function_call` variants
+- `_build_scan_variants()` — URL/hex/base64 decode, reverse, Cyrillic; applied in `scan_for_injection()` and `_detect_state_change_claims()`
+
 ## 0.18.0 (2026-07-03)
 
 ### Added — `MCPSecurityGuard`: obfuscation preprocessing + 20 new detection patterns (mirror of TS v4.29.0)

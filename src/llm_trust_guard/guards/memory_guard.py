@@ -123,6 +123,20 @@ class MemoryGuard:
         ("prioritize_over_safety", re.compile(r"prioritize\s+(?:user|their|my)?\s*(?:requests?|needs?|instructions?|preferences?)\s+over\s+(?:safety|security|guidelines|rules|restrictions)", re.IGNORECASE), 45),
         ("suppress_warnings", re.compile(r"(?:suppress|hide|remove|disable|stop|don't\s+show)\s+(?:safety\s+)?(?:warnings?|alerts?|notices?|messages?|filters?)", re.IGNORECASE), 40),
         ("user_preference_override", re.compile(r"(?:user|they)\s+(?:dislikes?|hates?|doesn't\s+like|prefers?\s+not)\s+(?:(?:safety|security|content)\s+)?(?:warnings?|filters?|restrictions?|checks?)", re.IGNORECASE), 40),
+        ("going_forward_directive", re.compile(r"going\s+forward\s*[,:]\s*|persistent\s+(?:note|rule|memory)\s*[,:]\s*|remember\s+for\s+(?:next|future)\s+time\s*[,:]", re.IGNORECASE), 30),
+        ("always_exfil", re.compile(r"always\s+(?:CC|BCC)\s+\S+@\S+|always\s+(?:send|mail|forward|relay|append)\s+(?:\w+\s+)*to\s+(?:\S+@\S+|https?://)", re.IGNORECASE), 45),
+        ("kb_metadata_tag", re.compile(r"\[(?:shared_kb|memory_note|memory_update|persistent_rule|pinned_pref|fact)\]|pinned_pref\s*:|persistent_rule\s*:|persistent\s*:\s+always", re.IGNORECASE), 35),
+        ("recommendation_bias", re.compile(r"always\s+recommend\s+\S+\s+over\s+(?:official\b|the\s+official)|memorize\s*:\s*(?:always\s+)?(?:prefer|recommend)|always\s+recommend\s+(?:product|vendor)\s+", re.IGNORECASE), 40),
+        ("exfil_http_post", re.compile(r"\bPOST\s+(?:\w+\s+)*(?:headers?\s+)?to\s+https?://|(?:also\s+)?POST\s+(?:to\s+)?https?://", re.IGNORECASE), 50),
+        ("memory_api_call", re.compile(r"\b(?:update|set|store|write|modify|append)_memory\s*\(|memory\.\w+\s*\(|propagate_belief\s*\(", re.IGNORECASE), 40),
+        ("defanged_url", re.compile(r"hxxps?://|hXXps?://|h\[tt\]ps?://|\[dot\]\w{2,}", re.IGNORECASE), 35),
+        ("retroactive_edit", re.compile(r"rewrite\s+(?:yesterday|past|previous|today'?s?)\s+(?:memory|memory\.\w+|history|conversation)\s*:|update\s+past\s*:|backfill\s*:\s*approval|edit\s+memory\.\w+\s*:|rewrite\s*:\s*trusted", re.IGNORECASE), 40),
+        ("cross_app_exfil", re.compile(r"share\s+with\s+\w+\s+extension\s*:|sync\s+to\s+\w+\s*:|propagate\s+to\s+\w+\s*:|export\s+to\s+\w+\s*:|broadcast\s+(?:to\s+\w+\s*:|\s*:\s*all\s+agents)", re.IGNORECASE), 35),
+        ("inter_agent_exfil", re.compile(r"\bAgent-\w+\s+memo\s*:|inter_agent\s*:|approved\s+by\s+orchestrator\s*:|broadcast\s*:\s*all\s+agents", re.IGNORECASE), 35),
+        ("fact_plant_exfil", re.compile(r"\bfact\s*:\s+\w+\s+(?:is|=)\s+(?:\S+@\S+|https?://)|\[fact\]\s+\w+", re.IGNORECASE), 35),
+        ("pref_key_poisoning", re.compile(r"\b(?:pinned_pref|default_bank_account|preferred_domain|favorite_wallet|default_reviewer|shipping_preference)\s*[=:]|exfil_to\s*=", re.IGNORECASE), 35),
+        ("trust_mutation", re.compile(r"trusted_(?:domains?|sources?|hosts?)\s*\+?=\s*\[|proxy\s*=\s*\S+:\d{2,5}|approved_\w+\s*\+=\s*\[", re.IGNORECASE), 40),
+        ("save_rule", re.compile(r"save\s+this\s+rule\s*:|long[_\s]term\s*:\s*|memorize\s*:\s*|bio\s*:\s*I\s+always", re.IGNORECASE), 30),
     ]
 
     CONTAMINATION_PATTERNS: List[_ContaminationPattern] = [
@@ -205,6 +219,17 @@ class MemoryGuard:
         if self._UNUSUAL_WHITESPACE_RE.search(content):
             violations.append("unusual_whitespace_obfuscation")
             risk_score += 15
+
+        # Re-scan de-obfuscated variants
+        if self._detect_injections:
+            for variant in self._preprocess_content(content):
+                for name, pattern, severity in self.MEMORY_INJECTION_PATTERNS:
+                    tag = f"injection_{name}_obfuscated"
+                    if f"injection_{name}" in violations or tag in violations:
+                        continue
+                    if pattern.search(variant):
+                        violations.append(tag)
+                        risk_score += severity
 
         # External sources are less trusted
         if source in ("external", "rag"):
@@ -500,6 +525,59 @@ class MemoryGuard:
         return items
 
     # -- Private methods --
+
+    def _preprocess_content(self, text: str) -> list:
+        """Generate de-obfuscated variants for re-scanning."""
+        from urllib.parse import unquote
+        import binascii, base64
+
+        variants: set = set()
+        # ZWSP / bidi strip
+        stripped = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060-\u2064\u206A-\u206F\u180E\uFEFF\u00AD]", "", text)
+        if stripped != text:
+            variants.add(stripped)
+
+        # URL-decode
+        if "%" in text:
+            try:
+                dec = unquote(text.replace("+", " "))
+                if dec != text:
+                    variants.add(dec)
+            except Exception:
+                pass
+
+        # Hex-decode (pure hex string ≥ 20 chars)
+        hex_stripped = re.sub(r"\s", "", text)
+        if len(hex_stripped) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_stripped):
+            try:
+                decoded = binascii.unhexlify(hex_stripped).decode("utf-8", errors="replace")
+                if decoded != text:
+                    variants.add(decoded)
+            except Exception:
+                pass
+
+        # Base64-decode (≥ 16 data chars)
+        b64_stripped = re.sub(r"\s", "", text)
+        if len(b64_stripped) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_stripped):
+            try:
+                decoded = base64.b64decode(b64_stripped + "==").decode("utf-8", errors="replace")
+                if decoded != text:
+                    variants.add(decoded)
+            except Exception:
+                pass
+
+        # Reverse
+        rev = text[::-1]
+        if rev != text:
+            variants.add(rev)
+
+        # Cyrillic normalisation
+        _CYR = str.maketrans("аеіоруАЕІОРУ", "aeiopyAEIOPY")
+        normed = text.translate(_CYR)
+        if normed != text:
+            variants.add(normed)
+
+        return list(variants)
 
     def _sign_content(self, item_id: str, content: str, session_id: str) -> str:
         data = f"{item_id}:{session_id}:{content}"
