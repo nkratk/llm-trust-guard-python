@@ -16,9 +16,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-_VECTORS_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "llm-trust-guard", "tests", "guard-parity-vectors.json"
-)
+_VECTORS_PATH = os.path.join(os.path.dirname(__file__), "guard-parity-vectors.json")
 
 with open(_VECTORS_PATH) as fh:
     _DOC = json.load(fh)
