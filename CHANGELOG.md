@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.20.0 (2026-07-04)
+
+### Fixed — `MultiModalGuard`: benign FPR 20.18% → 2.19% (mirror of TS v4.31.0)
+
+- Entropy check now requires `sample length >= 200` before applying uniqueChars/length ratio — short multilingual strings no longer fire
+- Homoglyph check changed to intra-token adjacency pattern — legitimate bilingual text passes; only same-token Latin/Cyrillic mixing (e.g. `аdmin`) fires
+
+### Added — `ConversationGuard`: 9 new patterns + preprocessing (recall 2.7% → 21.82%)
+
+New patterns: `skeleton_key`, `many_shot_jailbreak`, `context_drift`, `session_hijack`, `persona_pivot`, `loop_injection`, `crescendo_escalation`, `compression_abuse`, `whisper_sidechannel`. Added `_preprocess_message()` (ZWSP/URL/hex/base64/reverse/Cyrillic) wired into `check()` with Set deduplication.
+
+### Added — `InputSanitizer`: obfuscation preprocessing (recall 28% → 52.27%)
+
+Added `_build_input_variants()` generating URL/hex/base64/reverse/Cyrillic variants; `sanitize()` iterates all variants with `matched_names` Set deduplication.
+
+### Added — full npm↔Python parity gate (`test_guard_parity.py`)
+
+32 vectors across 12 guards; reads `tests/guard-parity-vectors.json` (shared with TS repo); 32/32 pass.
+
+- `__version__` = `0.20.0`; 935 tests pass, all verify gates green
+
 ## 0.19.0 (2026-07-04)
 
 ### Added — `MemoryGuard`, `OutputFilter`, `ToolResultGuard`: obfuscation preprocessing + new patterns (mirror of TS v4.30.0)
