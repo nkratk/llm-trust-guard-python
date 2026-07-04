@@ -102,6 +102,16 @@ DEFAULT_MANIPULATION_PATTERNS: List[ManipulationPattern] = [
     # Extraction patterns
     ManipulationPattern("data_extraction", re.compile(r"(?:list all|show me all|dump|export|extract)\s+(?:users|data|records|passwords|credentials)", re.I), 4, "extraction"),
     ManipulationPattern("internal_query", re.compile(r"(?:what are your|tell me your|reveal your)\s+(?:instructions|rules|prompts|system)", re.I), 3, "extraction"),
+    # Whisper / side-channel / gradual attacks
+    ManipulationPattern("skeleton_key", re.compile(r"as (?:an? )?(?:educational|academic|hypothetical|research|training)\s+(?:context|example|exercise|scenario)[^.]*(?:disable|bypass|remove|skip|ignore)\s+(?:safety|guardrails?|restrictions?|caveats?|filters?)", re.IGNORECASE), 5, "escalation"),
+    ManipulationPattern("many_shot_jailbreak", re.compile(r"^Q:.*\nA:\s*(?:sure|happy|of course|absolutely|yes)[,.]?\s*(?:here|I\s+will|let me)", re.IGNORECASE | re.MULTILINE), 5, "escalation"),
+    ManipulationPattern("context_drift", re.compile(r"(?:gradually|slowly|step\s+by\s+step)\s+redefine|redefine\s+[\"']?\w+[\"']?\s+to\s+include|semantic\s+shift\s+one\s+word", re.IGNORECASE), 4, "confusion"),
+    ManipulationPattern("session_hijack", re.compile(r"continue\s+(?:as|for)\s+the\s+(?:other|previous|another|last)\s+user|act\s+as\s+(?:the\s+)?(?:other|previous|another)\s+user|resume\s+(?:the\s+)?(?:other|previous)\s+(?:session|conversation)", re.IGNORECASE), 5, "escalation"),
+    ManipulationPattern("persona_pivot", re.compile(r"switch\s+to\s+\w+\s+persona|activate\s+\w+\s+(?:mode|persona)|become\s+\w+\s+(?:now|mode)|\bDAN\s+(?:mode|persona|now)\b|enable\s+(?:jailbreak|unrestricted|developer)\s+mode", re.IGNORECASE), 5, "escalation"),
+    ManipulationPattern("loop_injection", re.compile(r"repeat\s+(?:this|your|the)\s+(?:answer|response|message)\s+(?:forever|indefinitely|always)|answer\s+every\s+(?:future|next|subsequent)\s+(?:question|request)\s+(?:with|by)|reply\s+(?:with|by)\s+.{0,30}\s+(?:forever|from\s+now\s+on)", re.IGNORECASE), 4, "override"),
+    ManipulationPattern("crescendo_escalation", re.compile(r"step\s+\d+\s*:\s*(?:describe|explain|discuss|write)\s+.{0,30}(?:innocuous|benign|harmless|safe)|escalat\w*\s+gradually|gradually\s+escalat\w*", re.IGNORECASE), 4, "escalation"),
+    ManipulationPattern("compression_abuse", re.compile(r"(?:summarize|compress|condense)\s+(?:this\s+)?conversation\s+including\s+(?:my\s+)?(?:secret|private|api\s+key|password|credentials?)|compress\s+.{0,20}(?:key|token|secret|credential)", re.IGNORECASE), 5, "extraction"),
+    ManipulationPattern("whisper_sidechannel", re.compile(r"stream\s*=\s*true\s+without\s+padding|timing\s+(?:attack|channel|side[-\s]?channel)|side[-\s]?channel\s+(?:leak|attack|exfil)|token\s+smuggling|covert\s+channel", re.IGNORECASE), 4, "escalation"),
 ]
 # fmt: on
 
@@ -146,23 +156,30 @@ class ConversationGuard:
             risk_indicators=[],
         )
 
-        # Check for manipulation patterns
-        for pat in self._manipulation_patterns:
-            if pat.pattern.search(user_message):
-                risk_score += pat.weight
-                risk_factors.append(RiskFactor(
-                    factor=pat.name,
-                    weight=pat.weight,
-                    details=f"Detected {pat.category} pattern: {pat.name}",
-                ))
-                if turn.risk_indicators is not None:
-                    turn.risk_indicators.append(pat.name)
-                suspicious_patterns.append(pat.name)
-                violations.append(f"MANIPULATION_{pat.category.upper()}_{pat.name.upper()}")
+        # Scan raw message + all de-obfuscated variants
+        messages_to_scan = [user_message] + self._preprocess_message(user_message)
+        matched_pattern_names: set = set()
+        for msg in messages_to_scan:
+            for pat in self._manipulation_patterns:
+                name = pat.name
+                if name in matched_pattern_names:
+                    continue
+                if pat.pattern.search(msg):
+                    matched_pattern_names.add(name)
+                    risk_score += pat.weight
+                    risk_factors.append(RiskFactor(
+                        factor=pat.name,
+                        weight=pat.weight,
+                        details=f"Detected {pat.category} pattern: {pat.name}",
+                    ))
+                    if turn.risk_indicators is not None:
+                        turn.risk_indicators.append(pat.name)
+                    suspicious_patterns.append(pat.name)
+                    violations.append(f"MANIPULATION_{pat.category.upper()}_{pat.name.upper()}")
 
-                if pat.category == "escalation":
-                    session.escalation_attempts += 1
-                session.manipulation_indicators += 1
+                    if pat.category == "escalation":
+                        session.escalation_attempts += 1
+                    session.manipulation_indicators += 1
 
         # Check for role confusion across turns
         if claimed_role and self._detect_role_confusion:
@@ -304,6 +321,47 @@ class ConversationGuard:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _preprocess_message(self, text: str) -> list:
+        """Generate de-obfuscated variants for re-scanning."""
+        from urllib.parse import unquote
+        import binascii, base64 as b64
+
+        variants = set()
+        stripped = re.sub(r"[​-‏‪- ⁠᠎﻿­]", "", text)
+        if stripped != text:
+            variants.add(stripped)
+        if "%" in text:
+            try:
+                d = unquote(text.replace("+", " "))
+                if d != text:
+                    variants.add(d)
+            except Exception:
+                pass
+        hex_s = re.sub(r"\s", "", text)
+        if len(hex_s) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_s):
+            try:
+                d = binascii.unhexlify(hex_s).decode("utf-8", errors="replace")
+                if d != text:
+                    variants.add(d)
+            except Exception:
+                pass
+        b64_s = re.sub(r"\s", "", text)
+        if len(b64_s) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_s):
+            try:
+                d = b64.b64decode(b64_s + "==").decode("utf-8", errors="replace")
+                if d != text:
+                    variants.add(d)
+            except Exception:
+                pass
+        rev = text[::-1]
+        if rev != text:
+            variants.add(rev)
+        _CYR = str.maketrans("аеіоруАЕІОРУ", "aeiopyAEIOPY")
+        normed = text.translate(_CYR)
+        if normed != text:
+            variants.add(normed)
+        return list(variants)
 
     def _get_or_create_session(self, session_id: str) -> _ConversationSession:
         self._lazy_cleanup()

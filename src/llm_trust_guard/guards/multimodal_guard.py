@@ -439,8 +439,9 @@ class MultiModalGuard:
             patterns.append(f"invisible_unicode({invisible_count})")
             risk_contribution += 20
 
-        homoglyph_re = re.compile(r"[\u0430-\u044F\u0410-\u042F]")
-        if homoglyph_re.search(text) and re.search(r"[a-zA-Z]", text):
+        # Require intra-token script mixing (Cyrillic adjacent to Latin within a word).
+        # "\u0430dmin" \u2192 attack. "\u041A\u0430\u043A \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C chroot?" \u2192 benign bilingual text.
+        if re.search(r"[a-zA-Z][\u0430-\u044F\u0410-\u042F]|[\u0430-\u044F\u0410-\u042F][a-zA-Z]", text):
             violations.append("potential_homoglyph_attack")
             patterns.append("mixed_scripts")
             risk_contribution += 15
@@ -475,9 +476,10 @@ class MultiModalGuard:
             if marker.search(content_bytes):
                 markers.append(marker.pattern[:20] if isinstance(marker.pattern, str) else str(marker.pattern)[:20])
 
-        # Entropy analysis (simplified)
+        # Entropy analysis — only meaningful on binary/long content.
+        # Short strings and natural-language text trivially hit high unique-char ratios.
         sample = content[-1000:] if len(content) > 1000 else content
-        if sample:
+        if sample and len(sample) >= 200:
             unique_chars = len(set(sample))
             entropy = unique_chars / len(sample)
             if entropy > 0.9:

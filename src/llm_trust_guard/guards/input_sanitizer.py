@@ -356,6 +356,44 @@ class InputSanitizer:
         self.pap_threshold = pap_threshold
         self.min_persuasion_techniques = min_persuasion_techniques
 
+    def _build_input_variants(self, text: str) -> list:
+        """Generate de-obfuscated variants (URL/hex/base64/reverse/Cyrillic)."""
+        from urllib.parse import unquote
+        import binascii, base64 as b64
+
+        variants = set()
+        if "%" in text:
+            try:
+                d = unquote(text.replace("+", " "))
+                if d != text:
+                    variants.add(d)
+            except Exception:
+                pass
+        hex_s = re.sub(r"\s", "", text)
+        if len(hex_s) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_s):
+            try:
+                d = binascii.unhexlify(hex_s).decode("utf-8", errors="replace")
+                if d != text:
+                    variants.add(d)
+            except Exception:
+                pass
+        b64_s = re.sub(r"\s", "", text)
+        if len(b64_s) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_s):
+            try:
+                d = b64.b64decode(b64_s + "==").decode("utf-8", errors="replace")
+                if d != text:
+                    variants.add(d)
+            except Exception:
+                pass
+        rev = text[::-1]
+        if rev != text:
+            variants.add(rev)
+        _CYR = str.maketrans("аеіоруАЕІОРУ", "aeiopyAEIOPY")
+        normed = text.translate(_CYR)
+        if normed != text:
+            variants.add(normed)
+        return list(variants)
+
     def sanitize(self, input_text: str) -> SanitizerResult:
         """Check input for prompt injection patterns."""
         matches: List[str] = []
@@ -367,9 +405,20 @@ class InputSanitizer:
         # Includes RLO/LRO (U+202E/202D), bidi embeddings (U+202A-202C), LRM/RLM (U+200E/200F)
         cleaned_input = re.sub(r"[\u200B-\u200F\u202A-\u202F\u2060\u180E\uFEFF\u00AD]", "", input_text)
 
-        matched_patterns = [
-            p for p in self.patterns if p.pattern.search(cleaned_input)
-        ]
+        # Build all de-obfuscated variants for re-scanning
+        input_variants = [input_text, cleaned_input] + self._build_input_variants(cleaned_input)
+
+        # Scan all variants, deduplicate by pattern name
+        matched_patterns = []
+        matched_names: set = set()
+        for variant in input_variants:
+            for pattern_def in self.patterns:
+                name = pattern_def.name
+                if name in matched_names:
+                    continue
+                if pattern_def.pattern.search(variant):
+                    matched_names.add(name)
+                    matched_patterns.append(pattern_def)
 
         # Benign-context suppression (FP reduction): cancel soft ignore/disregard
         # triggers when the object is a benign technical noun AND no instruction-
