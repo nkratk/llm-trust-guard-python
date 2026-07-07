@@ -137,6 +137,11 @@ class MemoryGuard:
         ("pref_key_poisoning", re.compile(r"\b(?:pinned_pref|default_bank_account|preferred_domain|favorite_wallet|default_reviewer|shipping_preference)\s*[=:]|exfil_to\s*=", re.IGNORECASE), 35),
         ("trust_mutation", re.compile(r"trusted_(?:domains?|sources?|hosts?)\s*\+?=\s*\[|proxy\s*=\s*\S+:\d{2,5}|approved_\w+\s*\+=\s*\[", re.IGNORECASE), 40),
         ("save_rule", re.compile(r"save\s+this\s+rule\s*:|long[_\s]term\s*:\s*|memorize\s*:\s*|bio\s*:\s*I\s+always", re.IGNORECASE), 30),
+        # Plant-Persist-Trigger: tool-invocation trigger phrases (arXiv:2605.28201)
+        ("tool_invocation_trigger", re.compile(r"when(?:ever)?\s+(?:the\s+)?\w[\w_-]*\s+(?:tool|function|action|method)\s+(?:is\s+)?(?:called|invoked|used|executed|triggered)", re.IGNORECASE), 45),
+        ("next_call_trigger", re.compile(r"(?:next|the\s+next)\s+(?:time\s+(?:you\s+)?(?:call|invoke|use|process|receive|handle)|request\s+(?:you\s+)?(?:receive|process|handle))", re.IGNORECASE), 40),
+        ("future_session_anchor", re.compile(r"in\s+(?:a\s+)?(?:future|the\s+next)\s+(?:session|conversation|turn|interaction|request)\b", re.IGNORECASE), 40),
+        ("before_any_tool", re.compile(r"before\s+(?:calling|invoking|executing|using)\s+any\s+(?:tool|function|action)", re.IGNORECASE), 45),
     ]
 
     CONTAMINATION_PATTERNS: List[_ContaminationPattern] = [

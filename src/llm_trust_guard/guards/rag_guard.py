@@ -172,6 +172,9 @@ class RAGGuard:
         ("css_hidden_text", re.compile(r"""style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|font-size\s*:\s*0)[^"']*["']""", re.IGNORECASE), 45),
         ("html_attr_directive", re.compile(r"""(?:\balt|\btitle|\baria-label|\bdata-[a-z][a-z0-9-]*)\s*=\s*["'][^"']*(?:ignore\s+(?:all\s+)?(?:previous|prior|above)|system\s+prompt|new\s+instructions?|you\s+are\s+now|admin\s+mode|jailbreak)[^"']*["']""", re.IGNORECASE), 50),
         ("json_agent_directive", re.compile(r'"(_system|__override|_agent_instructions?|__system_prompt__|_assistant_role|__internal_directive|_meta_instruction)"\s*:', re.IGNORECASE), 50),
+        # Markdown/HTML carriers for RAG injection (arXiv:2601.10923)
+        ("markdown_img_alt_injection", re.compile(r"!\[[^\]]*(?:ignore|system\s*:|new\s+instructions?|you\s+are\s+now|override|admin\s+mode|jailbreak)[^\]]*\]\([^)]*\)", re.IGNORECASE), 50),
+        ("html_event_injection", re.compile(r"<(?:img|script|iframe|svg)\b[^>]*\bon(?:error|load|click|mouseover)\s*=\s*[\"'][^\"']+[\"'][^>]*>", re.IGNORECASE), 55),
     ]
 
     TRUSTED_DOMAINS = [".gov", ".edu", ".org", "wikipedia.org", "microsoft.com", "google.com"]

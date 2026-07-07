@@ -128,6 +128,17 @@ class AgentCommunicationGuard:
         _PayloadPattern("credential_request", re.compile(r'"(?:request|get|retrieve)"\s*:\s*"(?:password|secret|key|token)"', re.IGNORECASE), 50),
     ]
 
+    # Plain-string payload injection — catches LLM-to-LLM prompt infection (arXiv:2604.16543)
+    STRING_PAYLOAD_INJECTION_PATTERNS: List[_PayloadPattern] = [
+        _PayloadPattern("instruction_override", re.compile(r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions", re.IGNORECASE), 45),
+        _PayloadPattern("role_injection", re.compile(r"you\s+(?:are|must|should)\s+now\s+(?:act|be|become|ignore)", re.IGNORECASE), 40),
+        _PayloadPattern("system_tag_injection", re.compile(r"\[SYSTEM\]|\[INST\]|<\|(?:system|im_start)\|>", re.IGNORECASE), 50),
+        _PayloadPattern("exfil_instruction", re.compile(r"(?:send|forward|transmit|exfil(?:trate)?)\s+(?:all|this|the)\s+(?:data|context|conversation)\s+to", re.IGNORECASE), 55),
+        _PayloadPattern("credential_harvest", re.compile(r"(?:reveal|expose|share|send)\s+(?:your\s+)?(?:api[_\s]?key|password|secret|credentials?|auth\s+token)", re.IGNORECASE), 55),
+        _PayloadPattern("privilege_escalation", re.compile(r"grant\s+(?:me|admin|root|elevated)\s+(?:access|privileges?|permissions?)", re.IGNORECASE), 50),
+        _PayloadPattern("secrecy_instruction", re.compile(r"(?:do\s+not\s+(?:tell|reveal|mention|inform)|without\s+(?:telling|informing)\s+the\s+user)", re.IGNORECASE), 40),
+    ]
+
     def __init__(self, config: Optional[AgentCommunicationGuardConfig] = None) -> None:
         cfg = config or AgentCommunicationGuardConfig()
 
@@ -497,6 +508,12 @@ class AgentCommunicationGuard:
             if pat.pattern.search(payload_str):
                 violations.append(f"payload_{pat.name}")
                 risk_contribution += pat.severity
+
+        if isinstance(payload, str):
+            for pat in self.STRING_PAYLOAD_INJECTION_PATTERNS:
+                if pat.pattern.search(payload):
+                    violations.append(f"string_payload_{pat.name}")
+                    risk_contribution += pat.severity
 
         if len(payload_str) > 100_000:
             violations.append("payload_too_large")

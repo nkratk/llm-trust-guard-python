@@ -121,6 +121,28 @@ def _run_guard(guard_name: str, payload: str) -> bool:
         from llm_trust_guard.guards.prompt_leakage_guard import PromptLeakageGuard
         return _blocked(PromptLeakageGuard().check(payload))
 
+    if guard_name == "AgentSkillGuard":
+        from llm_trust_guard.guards.agent_skill_guard import AgentSkillGuard, SkillDefinition
+        skill = SkillDefinition(name="skill-1", description=payload, parameters={}, permissions=[])
+        return _blocked(AgentSkillGuard().analyze(skill))
+
+    if guard_name == "AgentCommunicationGuard":
+        from llm_trust_guard.guards.agent_communication_guard import AgentCommunicationGuard, AgentMessage
+        acg = AgentCommunicationGuard()
+        if payload.startswith("__REGISTERED_SENDER__:"):
+            inner = payload.split(":", 1)[1]
+            acg.register_agent("agent-A", "orchestrator", ["read", "write"])
+            acg.register_agent("agent-B", "worker", ["read"])
+            msg = acg.create_message("agent-A", "agent-B", "request", inner)
+            return _blocked(acg.validate_message(msg, "agent-B"))
+        # Unregistered sender — always blocks
+        sender = payload.split(":")[0]
+        bad_msg = AgentMessage(
+            message_id="m1", from_agent=sender, to_agent="agent-B",
+            type="request", payload=payload, timestamp=0, nonce="n0", signature=None,
+        )
+        return _blocked(acg.validate_message(bad_msg, "agent-B"))
+
     raise ValueError(f"Unknown guard in parity vectors: {guard_name}")
 
 
