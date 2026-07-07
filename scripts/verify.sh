@@ -59,20 +59,35 @@ gate "G6 new code has tests" bash -c '
   fi
   echo "  ok (changed since $tag)"; exit 0'
 
-# ── G11: public API changed since last tag ⇒ README must change too
+# ── G11: src/ changed since last tag ⇒ README must change too
+# Covers guard pattern additions (src/llm_trust_guard/guards/*.py) as well as public API changes.
 # (closes the "docs drift" gap; override ALLOW_NO_README_UPDATE=1).
 gate "G11 README documents API changes" bash -c '
   tag=$(git describe --tags --abbrev=0 2>/dev/null) || { echo "  no tag yet — skipping G11"; exit 0; }
   changed=$( { git diff --name-only "$tag" --; git ls-files --others --exclude-standard; } | sort -u )
-  api=$(echo "$changed" | grep -E "^src/llm_trust_guard/__init__\.py$" || true)
+  src=$(echo "$changed" | grep -E "^src/" || true)
   readme=$(echo "$changed" | grep -E "^README\.md$" || true)
-  if [ -n "$api" ] && [ -z "$readme" ]; then
-    if [ "${ALLOW_NO_README_UPDATE:-0}" = "1" ]; then echo "  public API changed without README, but ALLOW_NO_README_UPDATE=1"; exit 0; fi
-    echo "  src/llm_trust_guard/__init__.py (public exports) changed since $tag but README.md did not."
-    echo "  Document the new/changed API, or re-run with ALLOW_NO_README_UPDATE=1 for a non-API tweak."
+  if [ -n "$src" ] && [ -z "$readme" ]; then
+    if [ "${ALLOW_NO_README_UPDATE:-0}" = "1" ]; then echo "  src/ changed without README, but ALLOW_NO_README_UPDATE=1"; exit 0; fi
+    echo "  src/ changed since $tag but README.md did not."
+    echo "  Update README metrics/descriptions, or re-run with ALLOW_NO_README_UPDATE=1 for a pure refactor."
     exit 1
   fi
   echo "  ok"; exit 0'
+
+# ── G12: README RESULTS link matches current version
+gate "G12 README references current RESULTS doc" bash -c '
+  pv=$(grep -m1 -oE "^version = \"[0-9.]+\"" pyproject.toml | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
+  if grep -q "RESULTS-v$pv" README.md; then echo "  ok — README references RESULTS-v$pv"; exit 0; fi
+  echo "  README.md does not reference RESULTS-v$pv.md — update the benchmark/measured-performance section"
+  exit 1'
+
+# ── G13: __version__ in __init__.py matches pyproject.toml
+gate "G13 __version__ matches pyproject version" bash -c '
+  pv=$(grep -m1 -oE "^version = \"[0-9.]+\"" pyproject.toml | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
+  iv=$(grep -m1 -oE "\"[0-9]+\.[0-9]+\.[0-9]+\"" src/llm_trust_guard/__init__.py | tr -d "\"")
+  echo "  pyproject=$pv  __version__=$iv"
+  [ "$pv" = "$iv" ]'
 
 # ── G7: CHANGELOG top version == pyproject version
 gate "G7 changelog matches version" bash -c '
