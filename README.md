@@ -15,7 +15,7 @@ This package is your **first line of defense** — like a WAF (Web Application F
 
 ### What it catches well
 
-Per-category detection rates below are measured against the package's curated unit-test suite (representative attack samples per category). On broader held-out corpora these rates are typically lower — see [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md) (in the npm repo) for measured detection on attack corpora and [Known limitations](#what-it-catches-partially-50-80-detection) below.
+Per-category detection rates below are measured against the package's curated unit-test suite (representative attack samples per category). On broader held-out corpora these rates are typically lower — see [tests/adversarial/RESULTS-v4.31.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.31.0.md) (in the npm repo) for measured detection on attack corpora and [Known limitations](#what-it-catches-partially-50-80-detection) below.
 
 - Known prompt injection phrases (170+ patterns, 11 languages)
 - Encoding bypass attacks (9 formats: Base64, URL, Unicode, Hex, HTML, ROT13, Octal, Base32, mixed)
@@ -243,7 +243,7 @@ Mapped to the official lists ([LLM Top 10 2025](https://genai.owasp.org/resource
 
 ## Measured Performance
 
-v0.10.1 shares the regex detection family with llm-trust-guard npm v4.20.1. The benchmark below was run on the v0.9.0 / npm v4.19.0 release; v0.10.0 added MCP Sampling attack detection (see [CHANGELOG.md](CHANGELOG.md)) — orthogonal to the Sanitizer+Encoder pipelines below, so numbers apply unchanged. v0.10.1 / 4.20.1 are documentation-only patches with no detection changes. Full methodology, confidence intervals, hand-adjudication labels, and reproducibility scripts live in the npm repo: [tests/adversarial/RESULTS-v4.19.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.19.0.md).
+v0.21.0 shares the regex detection family with llm-trust-guard npm v4.32.0. The FPR table below was measured at v0.9.0 / npm v4.19.0; subsequent releases added patterns orthogonal to the Sanitizer+Encoder pipeline, so the FPR numbers apply unchanged. v0.21.0 adds 2026 literature-gap patterns to AgentSkillGuard, AgentCommunicationGuard, MemoryGuard, and RAGGuard — adversarial corpus recall 82.1% across 1,182 threat groups / 5,883 payloads, WildChat FPR gate: 494/10,000 = 4.94% (locked). Full methodology, confidence intervals, hand-adjudication labels live in the npm repo: [tests/adversarial/RESULTS-v4.31.0.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.31.0.md).
 
 **Attack detection on prior-published corpora** (Giskard n=35, Compass CTF Chinese n=11): detection rate has not moved from v4.13.5 on the Sanitizer+Encoder pipeline — 80.00% and 9.09% respectively, identical to v4.13.5. Six minor releases of pattern additions targeted different attack classes (indirect injection, tool-result validation, memory persistence, multi-agent trust) that these direct-text jailbreak corpora do not exercise. Small sample sizes mean "no evidence of improvement," not "proof of no improvement."
 
@@ -256,7 +256,7 @@ v0.10.1 shares the regex detection family with llm-trust-guard npm v4.20.1. The 
 
 WildChat filters toxic content but not prompt-injection intent. Canonical-marker analysis + a 50-sample hand-adjudication found that approximately 220 of the 493 Pipeline A blocks are actual jailbreak attempts users sent to ChatGPT, not genuine false positives. Corrected FPR is in the same order of magnitude as Meta Prompt Guard 86M's self-reported 3–5% out-of-distribution FPR — not a head-to-head comparison, but a useful reference point.
 
-**Not measured:** detection rate on the four attack classes added in v0.9.0 (CSS-hidden content, HTML attribute directives, JSON agent-directive fields, Reprompt-class markdown exfiltration). No public held-out corpus exists for these at statistical scale. Unit-test coverage is in the v0.9.0 test suite; independent third-party evaluation is invited.
+**Not measured on external corpora:** detection rate on attack classes added in v0.9.0–v0.21.0 (CSS-hidden content, HTML attribute directives, Semantic Compliance Hijacking, Plant-Persist-Trigger, LLM-to-LLM string-payload injection, markdown image alt injection, HTML event injection). No public held-out corpus exists for these at statistical scale. Internal adversarial corpus recall: 82.1% (1,182 groups — see npm repo RESULTS-v4.31.0.md); independent third-party evaluation is invited.
 
 For higher detection on adversarial corpora, plug in an ML classifier via the [DetectionClassifier interface](#pluggable-detection).
 

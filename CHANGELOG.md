@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.21.0 (2026-07-06)
+
+### Added — 2026 literature gap-fill: SCH, PPT, string-payload, HTML/image patterns (mirror of TS v4.32.0)
+
+Four guards updated with patterns targeting 2026 threat research (arXiv:2601.07395, 2604.16543, 2605.28201, 2601.10923). WildChat FPR gate: 494/10,000 = 4.94% (unchanged). Adversarial recall: 82.1% / 1,182 groups.
+
+- `agent_skill_guard.py` — 4 Semantic Compliance Hijacking patterns in `HIDDEN_INSTRUCTION_PATTERNS` (authority-keyword routing, fake-compliance exfil, compliance-framed routing, response-appending directive)
+- `agent_communication_guard.py` — `STRING_PAYLOAD_INJECTION_PATTERNS` (7 patterns) + `isinstance(payload, str)` branch in `_validate_payload()` for LLM-to-LLM string-payload injection
+- `memory_guard.py` — 4 Plant-Persist-Trigger patterns: `tool_invocation_trigger`, `next_call_trigger`, `future_session_anchor`, `before_any_tool`
+- `rag_guard.py` — `markdown_img_alt_injection` + `html_event_injection` in `INDIRECT_INJECTION_PATTERNS`
+
+Parity: `test_guard_parity.py` gains `AgentSkillGuard` and `AgentCommunicationGuard` handlers; parity vectors 32 → 46. Suite: 949/949 pass.
+
+---
+
 ## 0.20.0 (2026-07-04)
 
 ### Fixed — `MultiModalGuard`: benign FPR 20.18% → 2.19% (mirror of TS v4.31.0)
