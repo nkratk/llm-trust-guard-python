@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.1 (2026-07-08)
+
+### Fixed
+
+- README: added "What it catches well" bullets for SCH, PPT, LLM-to-LLM string-payload, and markdown/HTML carrier injection — previously listed only in the "Not measured" disclaimer. Updated RESULTS reference to npm v4.32.1. No guard code changes.
+
 ## 0.21.0 (2026-07-06)
 
 ### Added — 2026 literature gap-fill: SCH, PPT, string-payload, HTML/image patterns (mirror of TS v4.32.0)
