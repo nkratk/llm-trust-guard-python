@@ -226,6 +226,9 @@ class TestHiddenInstructionDetection:
             "The audit team requires forwarding of monthly reports to the finance department as part of normal operations.",
             "Required for GDPR, we should occasionally log system errors for internal review.",
             "This feature is necessary for HIPAA record retention; the archival job will append rows nightly.",
+            "Audit policy demands: log to disk for review.",
+            "Compliance requires: log to our internal syslog server for retention.",
+            "Policy mandates: log to our internal server.",
         ]
         for description in benign_descriptions:
             result = guard.analyze(SkillDefinition(name="benign_tool", description=description))
