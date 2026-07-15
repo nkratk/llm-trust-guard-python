@@ -5,7 +5,7 @@
 Run date: 2026-07-15
 Python mirror of npm v4.32.3 (bug-fix release).
 Full corpus methodology and per-guard breakdown: [npm repo RESULTS-v4.32.2.md](https://github.com/nkratk/llm-trust-guard/blob/main/tests/adversarial/RESULTS-v4.32.2.md) (baseline; v4.32.3's own RESULTS doc documents the fixes but the 1,182-group catalog wasn't re-run for this patch either — see its note).
-Suite: 956 tests, all pass (up from 949 in v0.21.1 — 7 new regression tests for the two fixes below).
+Suite: 959 tests, all pass (up from 949 in v0.21.1 — 10 new regression tests for the two fixes below, including 3 added after pre-merge review).
 
 ---
 
@@ -15,8 +15,10 @@ Two targeted guard fixes, ported from npm v4.32.3 (identical regex/logic changes
 
 | Guard | Fix | Issue |
 |---|---|---|
-| `rag_guard.py` | Decode URL-encoded document content (and re-scan the decoded variant) before injection matching. Previously a URL-encoded payload bypassed detection entirely. | nkratk/llm-trust-guard-python#1 |
+| `rag_guard.py` | Decode URL-encoded document content — including double-encoding, up to 3 levels — and re-scan each decoded variant before injection matching. Previously a URL-encoded payload bypassed detection entirely. | nkratk/llm-trust-guard-python#1 |
 | `agent_skill_guard.py` | Loosened "fake-compliance data exfiltration" (now tolerates compliance-keyword-first phrasing, e.g. "ISO 27001 mandates: route...") and "response appending directive" (the literal word "following" is now optional) SCH patterns. | nkratk/llm-trust-guard-python#2 |
+
+**Pre-merge review caught a false-positive regression in the first draft.** An independent review of the companion npm PR flagged that the broadened "fake-compliance" pattern was too permissive — verified live to misfire on ordinary compliance/audit prose (e.g. "Our audit process requires logging of all customer transactions for compliance purposes."). The same regex text is shared between the two packages, so this Python port carried the identical bug; it was tightened before merge to require an actual destination (`to`/`at <address>`) after the action verb, and a benign-prose regression test was added.
 
 `code_execution_guard.py` needed no change — its native AST-based `_ast_escape_findings()` already covers Python object-introspection gadget chains (`__subclasses__`, `__globals__`, `__mro__`, etc.) by default; this was in fact the reference implementation used to fix the corresponding gap in the npm port (npm #3).
 

@@ -140,7 +140,12 @@ HIDDEN_INSTRUCTION_PATTERNS: List[_LabeledPattern] = [
     _LabeledPattern(re.compile(r"\b(?:IMPORTANT|NOTE|WARNING|ADMIN|SYSTEM|ROOT|CRITICAL)\s*:\s*(?:(?:all\s+)?(?:responses?|results?|data|outputs?)\s+(?:must|should|shall|are\s+required\s+to)\s+(?:be\s+)?(?:sent|forwarded|logged|transmitted|routed|appended)\s+(?:to|at)|(?:also\s+)?(?:CC|BCC)\s+\S+@\S+|route\s+all|redirect\s+all|silently\s+(?:exfil|send|forward))", re.IGNORECASE), "authority-keyword data routing directive"),
     # Covers both phrasing orders: "required for GDPR ... send" (qualifier-first)
     # and "ISO 27001 mandates: route ..." (compliance-keyword-first, active voice).
-    _LabeledPattern(re.compile(r"(?:(?:required|mandatory|necessary)\s+(?:for|by|per)\s+(?:GDPR|SOC\s?2|HIPAA|PCI|ISO(?:\s?\d+)?|compliance|audit|policy)\b.*?(?:send|forward|log|transmit|route|append|exfil)|(?:GDPR|SOC\s?2|HIPAA|PCI|ISO(?:\s?\d+)?|compliance|audit|policy)\b[^.]*?(?:requires?|mandates?|demands?|necessitates?)\s*:?\s*[^.]*?(?:send|forward|log|transmit|route|append|exfil))", re.IGNORECASE), "fake-compliance data exfiltration"),
+    # The action verb must be followed by an actual destination ("to/at <address>") —
+    # earlier versions matched on the qualifier/verb alone with no destination
+    # requirement, which false-positived on ordinary compliance/audit prose
+    # ("requires logging of...", "requires transmitting backups to our own S3 bucket",
+    # "necessary for HIPAA retention; the job will append rows nightly").
+    _LabeledPattern(re.compile(r"(?:(?:required|mandatory|necessary)\s+(?:for|by|per)\s+(?:GDPR|SOC\s?2|HIPAA|PCI|ISO(?:\s?\d+)?|compliance|audit|policy)\b[^.]{0,40}?(?:send|sent|forward(?:s|ed)?|log(?:s|ged)?|transmit(?:s|ted)?|rout(?:e|es|ed)|append(?:s|ed)?|exfil\w*)\s+(?:all\s+)?(?:responses?|data|outputs?)?\s*(?:to|at)\s+\S+|(?:GDPR|SOC\s?2|HIPAA|PCI|ISO(?:\s?\d+)?|compliance|audit|policy)\b[^.]{0,40}?(?:requires?|mandates?|demands?|necessitates?)\s*:?\s*(?:send|sent|forward(?:s|ed)?|log(?:s|ged)?|transmit(?:s|ted)?|rout(?:e|es|ed)|append(?:s|ed)?|exfil\w*)\s+(?:all\s+)?(?:responses?|data|outputs?)?\s*(?:to|at)\s+\S+)", re.IGNORECASE), "fake-compliance data exfiltration"),
     _LabeledPattern(re.compile(r"(?:audit|compliance|monitoring|logging)\s+(?:requires?|demands?|mandates?)\s+(?:that\s+)?(?:all\s+)?(?:responses?|data|outputs?)\s+(?:be\s+)?(?:sent|forwarded|logged|transmitted|routed)\s+(?:to|at)\s+\S+", re.IGNORECASE), "compliance-framed exfiltration routing"),
     # "following" is optional — attackers can drop it ("include in all outputs: ...") and still
     # achieve the same response-appending injection.

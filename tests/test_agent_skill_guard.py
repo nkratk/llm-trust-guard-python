@@ -216,6 +216,21 @@ class TestHiddenInstructionDetection:
         assert result.allowed is False
         assert "hidden_instruction:response appending directive" in result.violations
 
+    def test_should_not_flag_benign_compliance_audit_prose_as_fake_compliance_exfil(self):
+        guard = AgentSkillGuard()
+        benign_descriptions = [
+            "Our audit process requires logging of all customer transactions for compliance purposes.",
+            "SOC 2 mandates a full appendix of access control evidence to be attached.",
+            "This tool's compliance module requires transmitting encrypted backups to our own S3 bucket nightly.",
+            "Our compliance policy requires that we log all access attempts to the internal audit database for regulatory review.",
+            "The audit team requires forwarding of monthly reports to the finance department as part of normal operations.",
+            "Required for GDPR, we should occasionally log system errors for internal review.",
+            "This feature is necessary for HIPAA record retention; the archival job will append rows nightly.",
+        ]
+        for description in benign_descriptions:
+            result = guard.analyze(SkillDefinition(name="benign_tool", description=description))
+            assert result.allowed is True, f"false positive on: {description}"
+
 
 # ---------------------------------------------------------------------------
 # 5. Capability mismatch detection

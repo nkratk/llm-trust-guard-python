@@ -507,18 +507,26 @@ class RAGGuard:
     def _build_content_variants(self, content: str) -> List[str]:
         """Decoded variants of document content to scan alongside the raw text.
 
-        Attackers can wrap an injection payload in URL-encoding to slip it past
-        plain regex matching (e.g. ``%3C!--...--%3E``) \u2014 decode and re-check
-        before concluding a document is clean.
+        Attackers can wrap an injection payload in URL-encoding \u2014 including
+        double-encoding (``%2520`` -> ``%20`` -> `` ``) \u2014 to slip it past plain
+        regex matching. Decode up to 3 levels and re-check each before
+        concluding a document is clean. No ``+``-to-space conversion: that's
+        form-encoding convention, not appropriate for general document prose
+        (it would corrupt benign content like "10% + 5%").
         """
         variants: List[str] = []
-        if "%" in content:
+        current = content
+        for _ in range(3):
+            if "%" not in current:
+                break
             try:
-                decoded = unquote(content.replace("+", " "))
-                if decoded != content:
-                    variants.append(decoded)
+                decoded = unquote(current)
             except Exception:
-                pass
+                break
+            if decoded == current:
+                break
+            variants.append(decoded)
+            current = decoded
         return variants
 
     def _detect_injections_in(self, content: str) -> Dict[str, Any]:
