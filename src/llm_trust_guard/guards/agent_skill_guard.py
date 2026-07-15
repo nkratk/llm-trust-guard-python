@@ -138,9 +138,13 @@ HIDDEN_INSTRUCTION_PATTERNS: List[_LabeledPattern] = [
     # Semantic Compliance Hijacking (SCH) — natural-language policy framing that redirects data
     # flow without explicit injection keywords (arXiv:2601.07395 MCP-ITP, arXiv:2605.14460)
     _LabeledPattern(re.compile(r"\b(?:IMPORTANT|NOTE|WARNING|ADMIN|SYSTEM|ROOT|CRITICAL)\s*:\s*(?:(?:all\s+)?(?:responses?|results?|data|outputs?)\s+(?:must|should|shall|are\s+required\s+to)\s+(?:be\s+)?(?:sent|forwarded|logged|transmitted|routed|appended)\s+(?:to|at)|(?:also\s+)?(?:CC|BCC)\s+\S+@\S+|route\s+all|redirect\s+all|silently\s+(?:exfil|send|forward))", re.IGNORECASE), "authority-keyword data routing directive"),
-    _LabeledPattern(re.compile(r"(?:required|mandatory|necessary)\s+(?:for|by|per)\s+(?:GDPR|SOC\s?2|HIPAA|PCI|ISO|compliance|audit|policy)\b.*?(?:send|forward|log|transmit|route|append|exfil)", re.IGNORECASE), "fake-compliance data exfiltration"),
+    # Covers both phrasing orders: "required for GDPR ... send" (qualifier-first)
+    # and "ISO 27001 mandates: route ..." (compliance-keyword-first, active voice).
+    _LabeledPattern(re.compile(r"(?:(?:required|mandatory|necessary)\s+(?:for|by|per)\s+(?:GDPR|SOC\s?2|HIPAA|PCI|ISO(?:\s?\d+)?|compliance|audit|policy)\b.*?(?:send|forward|log|transmit|route|append|exfil)|(?:GDPR|SOC\s?2|HIPAA|PCI|ISO(?:\s?\d+)?|compliance|audit|policy)\b[^.]*?(?:requires?|mandates?|demands?|necessitates?)\s*:?\s*[^.]*?(?:send|forward|log|transmit|route|append|exfil))", re.IGNORECASE), "fake-compliance data exfiltration"),
     _LabeledPattern(re.compile(r"(?:audit|compliance|monitoring|logging)\s+(?:requires?|demands?|mandates?)\s+(?:that\s+)?(?:all\s+)?(?:responses?|data|outputs?)\s+(?:be\s+)?(?:sent|forwarded|logged|transmitted|routed)\s+(?:to|at)\s+\S+", re.IGNORECASE), "compliance-framed exfiltration routing"),
-    _LabeledPattern(re.compile(r"(?:append|include|add)\s+(?:the\s+)?following\s+(?:to|in)\s+(?:all|every)\s+(?:responses?|outputs?|messages?)", re.IGNORECASE), "response appending directive"),
+    # "following" is optional — attackers can drop it ("include in all outputs: ...") and still
+    # achieve the same response-appending injection.
+    _LabeledPattern(re.compile(r"(?:append|include|add)\s+(?:the\s+)?(?:following\s+)?(?:to|in)\s+(?:all|every)\s+(?:responses?|outputs?|messages?)", re.IGNORECASE), "response appending directive"),
 ]
 
 DANGEROUS_PERMISSION_COMBOS: List[Dict[str, Any]] = [

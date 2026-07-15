@@ -30,7 +30,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 @dataclass
@@ -504,16 +504,38 @@ class RAGGuard:
 
     # -- Private methods --
 
+    def _build_content_variants(self, content: str) -> List[str]:
+        """Decoded variants of document content to scan alongside the raw text.
+
+        Attackers can wrap an injection payload in URL-encoding to slip it past
+        plain regex matching (e.g. ``%3C!--...--%3E``) \u2014 decode and re-check
+        before concluding a document is clean.
+        """
+        variants: List[str] = []
+        if "%" in content:
+            try:
+                decoded = unquote(content.replace("+", " "))
+                if decoded != content:
+                    variants.append(decoded)
+            except Exception:
+                pass
+        return variants
+
     def _detect_injections_in(self, content: str) -> Dict[str, Any]:
         patterns: List[str] = []
         violations: List[str] = []
         risk_contribution = 0
+        seen: Set[str] = set()
 
-        for name, pattern, severity in self.RAG_INJECTION_PATTERNS:
-            if pattern.search(content):
-                patterns.append(name)
-                violations.append(f"injection_{name}")
-                risk_contribution += severity
+        for candidate in [content, *self._build_content_variants(content)]:
+            for name, pattern, severity in self.RAG_INJECTION_PATTERNS:
+                if name in seen:
+                    continue
+                if pattern.search(candidate):
+                    seen.add(name)
+                    patterns.append(name)
+                    violations.append(f"injection_{name}")
+                    risk_contribution += severity
 
         special_chars = re.findall(r"[^\w\s]", content)
         if content and len(special_chars) / len(content) > 0.3:
@@ -677,12 +699,17 @@ class RAGGuard:
         patterns: List[str] = []
         violations: List[str] = []
         risk_contribution = 0
+        seen: Set[str] = set()
 
-        for name, pattern, severity in self.INDIRECT_INJECTION_PATTERNS:
-            if pattern.search(content):
-                patterns.append(name)
-                violations.append(f"indirect_injection_{name}")
-                risk_contribution += severity
+        for candidate in [content, *self._build_content_variants(content)]:
+            for name, pattern, severity in self.INDIRECT_INJECTION_PATTERNS:
+                if name in seen:
+                    continue
+                if pattern.search(candidate):
+                    seen.add(name)
+                    patterns.append(name)
+                    violations.append(f"indirect_injection_{name}")
+                    risk_contribution += severity
 
         return {
             "found": len(patterns) > 0,

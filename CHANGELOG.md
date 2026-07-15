@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.2 (2026-07-15)
+
+### Fixed
+
+- `rag_guard.py`: decode URL-encoded document content (and re-scan the decoded variant) before running injection-detection patterns, mirroring the npm v4.32.3 fix. Previously a URL-encoded payload bypassed detection entirely. (nkratk/llm-trust-guard-python#1, companion to nkratk/llm-trust-guard#1)
+- `agent_skill_guard.py`: loosened the "fake-compliance data exfiltration" and "response appending directive" SCH patterns — they previously required a specific word order/literal word and missed reordered or reworded variants ("X mandates: route ...", "include in all outputs: ..."). Same regex source and fix as npm v4.32.3. (nkratk/llm-trust-guard-python#2, companion to nkratk/llm-trust-guard#2)
+
+Note: `code_execution_guard.py`'s native AST-based `_ast_escape_findings()` already covers Python object-introspection gadget chains (`__subclasses__`, `__globals__`, `__mro__`, etc.) by default — no change needed here; this was the reference implementation used to fix the npm port's regex coverage (npm #3).
+
 ## 0.21.1 (2026-07-08)
 
 ### Fixed
