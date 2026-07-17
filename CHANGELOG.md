@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `code_execution_guard.py`: `_ast_escape_findings()`'s Python sandbox-escape gadget-chain detector flagged a single, standalone dunder attribute access (e.g. `cls.__subclasses__()` for plugin discovery, `def __reduce__` for pickle support) as a sandbox escape — common in legitimate code and not itself a gadget chain. Now mirrors the npm port's already-adversarially-reviewed fix (`code-execution-guard.ts`'s `hasPythonGadgetChain`): only fires when 2+ distinct gadget-chain tokens co-occur within a 50-character proximity window, measured via AST node position (`end_lineno`/`end_col_offset`) rather than npm's raw substring search — this also preserves a precision advantage pure text scanning doesn't have: a `def __reduce__` definition is never visited as a use, so definition sites are naturally excluded. Adversarial review of the initial implementation found and fixed a follow-up bug: `ast.Attribute.col_offset` points at the start of the whole chain expression, not the attribute name itself, which inflated the measured distance between two separate references and let genuinely adjacent (~20-char) gadget pairs slip past the window undetected — fixed by using `end_lineno`/`end_col_offset` instead. Fixes nkratk/llm-trust-guard-python#4.
+
 ## 0.21.1 (2026-07-08)
 
 ### Fixed
