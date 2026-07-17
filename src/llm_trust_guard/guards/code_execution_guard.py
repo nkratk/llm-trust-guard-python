@@ -170,20 +170,54 @@ _DEFAULT_BLOCKED_IMPORTS: Dict[str, List[str]] = {
 # stdlib parser, so it takes a pluggable parser-adapter route instead.
 _AST_ESCAPE_DUNDERS = frozenset({
     "__subclasses__", "__bases__", "__mro__", "__base__",
-    "__globals__", "__builtins__", "__import__",
-    "__getattribute__", "__reduce__", "__reduce_ex__", "__code__", "__closure__",
+    "__globals__", "__getattribute__", "__reduce_ex__", "__reduce__",
+    "__code__", "__closure__",
 })
+# __builtins__/__import__ dropped from this set (mirrors the npm port's
+# PYTHON_GADGET_TOKENS list) — __import__ used as a bare Call already has its
+# own always-on check below (calling it dynamically is inherently suspicious
+# regardless of context); a bare, uncalled reference to either isn't.
+
+_GADGET_PROXIMITY_WINDOW = 50  # chars; mirrors code-execution-guard.ts
+
+
+def _line_offset_lookup(code: str):
+    """Return fn(lineno, col_offset) -> absolute char offset into `code`."""
+    starts = [0]
+    for line in code.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def to_offset(lineno: int, col_offset: int) -> int:
+        return starts[lineno - 1] + col_offset
+
+    return to_offset
 
 
 def _ast_escape_findings(code: str):
     """Return [(name, severity), ...] for Python sandbox-escape gadgets, or None
-    if the code does not parse (caller keeps the regex-only result)."""
+    if the code does not parse (caller keeps the regex-only result).
+
+    Gadget-chain dunders (__subclasses__, __globals__, .mro(), etc.) only fire
+    when 2+ DISTINCT tokens co-occur within a small proximity window (50 chars)
+    of each other — mirrors the npm port's identical, independently-adversarial-
+    reviewed fix (code-execution-guard.ts's hasPythonGadgetChain). A single
+    token alone (e.g. bare __reduce__ for pickling support, __subclasses__()
+    for plugin discovery) is common in legitimate code and isn't itself a
+    chain; real gadget chains are tightly-chained attribute accesses reaching
+    from an arbitrary object to os/subprocess without importing them directly.
+    Uses AST node positions (not npm's raw substring search) so a dunder
+    appearing only inside a string literal or comment, or as a `def __reduce__`
+    *definition* rather than a use, is never visited as an ast.Attribute/Name
+    and so never counted — a precision advantage over pure text scanning.
+    """
     try:
         tree = ast.parse(code)
     except (SyntaxError, ValueError):
         return None
     out: List = []
     seen: set = set()
+    positions: List[tuple] = []  # (token, absolute_offset)
+    to_offset = _line_offset_lookup(code)
 
     def add(name: str, severity: int) -> None:
         if name not in seen:
@@ -192,15 +226,42 @@ def _ast_escape_findings(code: str):
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and node.attr in _AST_ESCAPE_DUNDERS:
-            add(f"ast_sandbox_escape_{node.attr}", 60)
+            # An Attribute node's lineno/col_offset is the START of the WHOLE
+            # chain expression it's part of (e.g. for `a.b.__subclasses__`,
+            # col_offset points at `a`, not at `__subclasses__`) — using it
+            # inflates the measured distance between two separate references
+            # by the length of the first one's prefix, letting genuinely
+            # adjacent gadget pairs slip past the window undetected. Use
+            # end_lineno/end_col_offset instead, which lands right after the
+            # attribute name itself.
+            positions.append((node.attr, to_offset(node.end_lineno, node.end_col_offset)))
         elif isinstance(node, ast.Name) and node.id in _AST_ESCAPE_DUNDERS:
-            add(f"ast_sandbox_escape_{node.id}", 55)
+            # A bare Name has no wrapping expression, so its own
+            # lineno/col_offset already points at the token itself.
+            positions.append((node.id, to_offset(node.lineno, node.col_offset)))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "mro"
+        ):
+            # .mro() method-call form, distinct from the __mro__ attribute.
+            # Same end-offset reasoning as the Attribute case above.
+            positions.append(("__mro_call__", to_offset(node.func.end_lineno, node.func.end_col_offset)))
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "__import__"
         ):
             add("ast_dynamic_import", 55)
+
+    positions.sort(key=lambda p: p[1])
+    for i in range(len(positions)):
+        for j in range(i + 1, len(positions)):
+            if positions[j][1] - positions[i][1] > _GADGET_PROXIMITY_WINDOW:
+                break  # positions sorted by offset; nothing further can be in-window
+            if positions[j][0] != positions[i][0]:
+                add("ast_sandbox_escape_gadget_chain", 60)
+                break
     return out
 
 
