@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `code_execution_guard.py`: `_ast_escape_findings()`'s Python sandbox-escape gadget-chain detector flagged a single, standalone dunder attribute access (e.g. `cls.__subclasses__()` for plugin discovery, `def __reduce__` for pickle support) as a sandbox escape — common in legitimate code and not itself a gadget chain. Now mirrors the npm port's already-adversarially-reviewed fix (`code-execution-guard.ts`'s `hasPythonGadgetChain`): only fires when 2+ distinct gadget-chain tokens co-occur within a 50-character proximity window, measured via AST node position (`end_lineno`/`end_col_offset`) rather than npm's raw substring search — this also preserves a precision advantage pure text scanning doesn't have: a `def __reduce__` definition is never visited as a use, so definition sites are naturally excluded. Adversarial review of the initial implementation found and fixed a follow-up bug: `ast.Attribute.col_offset` points at the start of the whole chain expression, not the attribute name itself, which inflated the measured distance between two separate references and let genuinely adjacent (~20-char) gadget pairs slip past the window undetected — fixed by using `end_lineno`/`end_col_offset` instead. Fixes nkratk/llm-trust-guard-python#4.
+
+### Added
+
+- Broadened `tests/test_code_execution_ast.py`'s existing parametrized coverage (24 new cases): more long-variable-name proximity variants targeting the offset-bug class above, more single-token benign contexts (dict values, f-strings, sort keys, logging helpers), a genuinely-far (>50 char) two-token benign case, an explicit 50/51-char proximity-window boundary test, and a documented (intentionally not fixed) test for the `getattr(obj, '__subclasses__')`-style dynamic-access gap the AST pass structurally can't see. Same exercise run against the npm sibling package found 2 new bugs on first use; this Python pass found none (954/954 pass) — consistent with AST-based detection's inherent precision advantage over npm's raw substring search.
+
 ## 0.21.2 (2026-07-15)
 
 ### Fixed

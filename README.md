@@ -36,6 +36,7 @@ Per-category detection rates below are measured against the package's curated un
 - **Plant-Persist-Trigger (PPT) dormant memory payloads** — sleeper instructions triggered by future tool calls, next requests, or future sessions (`MemoryGuard`, arXiv:2605.28201)
 - **LLM-to-LLM string-payload injection** — 7 patterns (instruction override, role injection, system-tag smuggling, exfil directive, credential harvest, privilege escalation, secrecy instruction) in plain-string agent-to-agent messages (`AgentCommunicationGuard`, arXiv:2604.16543)
 - **Markdown image alt / HTML event injection** — injection hidden in `![alt text](url)` alt fields or `<img onerror=...>` / `<svg onload=...>` event handlers in RAG-retrieved content (`RAGGuard`, arXiv:2601.10923)
+- **Python object-introspection gadget-chain proximity precision** — `CodeExecutionGuard`'s AST-based sandbox-escape detector now only fires when 2+ distinct gadget tokens (`__subclasses__`/`__globals__`/`__mro__`/`__bases__`/`.mro()`/`__reduce__`/etc.) co-occur within a 50-character window, matching real chained-attribute-access attacks; a single standalone token (e.g. bare `cls.__subclasses__()` for plugin discovery, `def __reduce__` for pickle support) no longer false-positives
 
 ### What it catches partially (~50-80% detection)
 - Multi-turn escalation (pattern-based, not semantic)
