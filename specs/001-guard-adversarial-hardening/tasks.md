@@ -12,11 +12,12 @@ guard-hardening work session. Before trusting it, reconcile against live
 state: `gh issue list --repo nkratk/llm-trust-guard-python --state all`,
 `gh pr list --repo nkratk/llm-trust-guard-python --state all`, PyPI JSON API
 for the published version. **Last reconciled against live state: 2026-07-19
-(post-merge).**
+(post-release).**
 
-**Current published version**: PyPI `llm-trust-guard` v0.21.2. PR #5 is
-**merged to `main` but not yet released** — a new version has not been
-published to PyPI yet (T010b).
+**Current published version**: PyPI `llm-trust-guard` v0.21.3 — confirmed
+live via the PyPI JSON API after `gh release create` triggered the publish
+workflow (GitHub Actions run succeeded). Issue #4 remained correctly closed
+through the release tagging.
 
 Note: unlike the npm sibling repo, squash-merging this PR did **not** cause
 any stray issue auto-closes — `git log` across the full commit range showed
@@ -66,6 +67,6 @@ issue):
 
 - [x] T009 ~~Add `Closes #4`~~ — already present (see correction note above).
 - [x] T010 **Explicit merge decision for PR #5** — user confirmed 2026-07-19, alongside the npm sibling's PR #17; merged (squash) to main.
-- [ ] T010b **Explicit release decision** — merging to `main` does not publish a new PyPI version by itself; requires separate, explicit user confirmation per Constitution Principle VII, independent of whether the npm sibling's release happens too.
+- [x] T010b **Explicit release decision** — user confirmed 2026-07-19 alongside the npm sibling's release; `gh release create v0.21.3` run, publish workflow succeeded, confirmed live on PyPI.
 - [x] T011 Issue #4 auto-closed correctly on merge (full fix, no residual gap — confirmed via `gh issue view 4`, no incident here unlike the npm sibling repo's #5/#11/#15).
 - [ ] T012 Cross-check whether any of the npm sibling's confirmed-but-unfixed/partially-fixed bugs (#7, #10, #11, #13, #15, #16 in that repo's tasks.md) have a Python-side equivalent that hasn't been checked yet — Constitution Principle VI explicitly warns against assuming either parity or divergence without live testing, and this check has not yet been done for the #7-#16 batch (only the original #1-#3 batch was cross-checked).
