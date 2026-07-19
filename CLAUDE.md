@@ -41,3 +41,8 @@ When benchmarking detection:
 - Test on MULTIPLE datasets (not just training distribution)
 - Report FP rate on safe-prompt datasets representative of production traffic
 - Distinguish between curated test suites and real-world data
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
