@@ -10,6 +10,15 @@
 
 - Broadened `tests/test_code_execution_ast.py`'s existing parametrized coverage (24 new cases): more long-variable-name proximity variants targeting the offset-bug class above, more single-token benign contexts (dict values, f-strings, sort keys, logging helpers), a genuinely-far (>50 char) two-token benign case, an explicit 50/51-char proximity-window boundary test, and a documented (intentionally not fixed) test for the `getattr(obj, '__subclasses__')`-style dynamic-access gap the AST pass structurally can't see. Same exercise run against the npm sibling package found 2 new bugs on first use; this Python pass found none (954/954 pass) — consistent with AST-based detection's inherent precision advantage over npm's raw substring search.
 
+## 0.21.2 (2026-07-15)
+
+### Fixed
+
+- `rag_guard.py`: decode URL-encoded document content — including double-encoding, up to 3 levels — and re-scan each decoded variant before running injection-detection patterns, mirroring the npm v4.32.3 fix. Previously a URL-encoded payload bypassed detection entirely. (nkratk/llm-trust-guard-python#1, companion to nkratk/llm-trust-guard#1)
+- `agent_skill_guard.py`: loosened the "fake-compliance data exfiltration" and "response appending directive" SCH patterns — they previously required a specific word order/literal word and missed reordered or reworded variants ("X mandates: route ...", "include in all outputs: ..."). The broadened "fake-compliance" pattern also now requires an explicit "all responses/data/output(s)" object AND an actual destination (`to`/`at <address>`) after the action verb — two earlier drafts were progressively found, in review, to false-positive on benign compliance/audit prose (first on qualifier+verb alone, then on verb+destination with no bulk object). Both caught before merge. Same regex source and fix as npm v4.32.3. (nkratk/llm-trust-guard-python#2, companion to nkratk/llm-trust-guard#2)
+
+Note: `code_execution_guard.py` was not changed in this release. Its native AST-based `_ast_escape_findings()` correctly blocks real Python object-introspection gadget chains (`__subclasses__`, `__globals__`, `__mro__`, etc.) and served as the reference for fixing the npm port's true-negative gap (npm #3). However, it has its own, separate over-blocking bug — a single standalone dunder attribute access (e.g. bare `cls.__subclasses__()`) is flagged as if it were a chain, with no proximity/co-occurrence check at all. Filed as [#4](https://github.com/nkratk/llm-trust-guard-python/issues/4); not fixed in this release.
+
 ## 0.21.1 (2026-07-08)
 
 ### Fixed
