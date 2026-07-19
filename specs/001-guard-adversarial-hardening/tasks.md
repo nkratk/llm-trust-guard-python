@@ -11,10 +11,19 @@ mechanically execute. It is a status ledger, updated at the end of every
 guard-hardening work session. Before trusting it, reconcile against live
 state: `gh issue list --repo nkratk/llm-trust-guard-python --state all`,
 `gh pr list --repo nkratk/llm-trust-guard-python --state all`, PyPI JSON API
-for the published version. **Last reconciled against live state: 2026-07-19.**
+for the published version. **Last reconciled against live state: 2026-07-19
+(post-merge).**
 
-**Current published version**: PyPI `llm-trust-guard` v0.21.2 (does NOT yet
-include the fix below — it's on unmerged PR #5)
+**Current published version**: PyPI `llm-trust-guard` v0.21.2. PR #5 is
+**merged to `main` but not yet released** — a new version has not been
+published to PyPI yet (T010b).
+
+Note: unlike the npm sibling repo, squash-merging this PR did **not** cause
+any stray issue auto-closes — `git log` across the full commit range showed
+only the intended `Closes #4` reference, no leftover stale closing keywords
+from an earlier, later-reverted attempt (this repo's fix for #4 didn't need
+a revert-and-retry cycle the way several of npm's did). Verified by the same
+grep-based check the npm incident prompted adding to this file's process.
 
 ## Phase 1: Fix batch #1 (issues #1-#2) — COMPLETE, RELEASED
 
@@ -22,11 +31,18 @@ include the fix below — it's on unmerged PR #5)
 - [x] T002 AgentSkillGuard SCH regex brittleness, parity with npm #2 (#2) — fixed, merged (PR #3), released v0.21.2
 - [x] T003 Close issues #1, #2 on GitHub — done 2026-07-16 (they had stayed open post-merge; same housekeeping gap found in the npm sibling repo)
 
-## Phase 2: Fix batch #2 (issue #4) — FIXED, TESTED, GATE-GREEN, **NOT MERGED**
+## Phase 2: Fix batch #2 (issue #4) — FIXED, TESTED, GATE-GREEN, **MERGED, NOT RELEASED**
 
 **PR**: [#5](https://github.com/nkratk/llm-trust-guard-python/pull/5), branch
-`fix/gadget-chain-proximity`, state OPEN as of 2026-07-19. 954/954 tests
-passing, all `scripts/verify.sh` gates green. Already references `Closes #4`
+`fix/gadget-chain-proximity`, **MERGED to main 2026-07-19 19:35 UTC**
+(squash). Also required a follow-up commit post-merge: merging `main` in
+surfaced a genuine G11 gate failure (README.md never got an entry for this
+fix — CHANGELOG.md did, README.md was missed) that the pre-merge local
+`verify.sh` runs hadn't caught, since G11 diffs against the last *tagged*
+release and that comparison only became fully accurate once main's real
+history was merged in. Fixed same-day before pushing. 964/964 tests passing
+post-merge, all `scripts/verify.sh` gates green. Already references
+`Closes #4`
 (Constitution Principle V, FR-002).
 **Correction (2026-07-19, same day): an earlier version of this file
 incorrectly claimed no `Closes #N` reference existed — an independent judge
@@ -46,9 +62,10 @@ issue):
 
 - [x] T008 spec-kit set up in this repo (`.specify/`, `.claude/skills/speckit-*`, this spec) — 2026-07-19, mirroring the npm sibling's setup for the same reason
 
-## Phase 4: Next steps — NOT STARTED
+## Phase 4: Next steps
 
 - [x] T009 ~~Add `Closes #4`~~ — already present (see correction note above).
-- [ ] T010 **Explicit merge/release decision for PR #5** — deliberately not yet made; requires separate, explicit user confirmation per Constitution Principle VII. Typically decided alongside the npm sibling's PR #17 since both were part of the same session's fix batch, but each repo's release is independent — confirm both, not just one, before assuming "released" applies to both.
-- [ ] T011 After T010, close issue #4 on GitHub (full fix, no residual gap — unlike several of the npm sibling's partial fixes, this one closes cleanly)
+- [x] T010 **Explicit merge decision for PR #5** — user confirmed 2026-07-19, alongside the npm sibling's PR #17; merged (squash) to main.
+- [ ] T010b **Explicit release decision** — merging to `main` does not publish a new PyPI version by itself; requires separate, explicit user confirmation per Constitution Principle VII, independent of whether the npm sibling's release happens too.
+- [x] T011 Issue #4 auto-closed correctly on merge (full fix, no residual gap — confirmed via `gh issue view 4`, no incident here unlike the npm sibling repo's #5/#11/#15).
 - [ ] T012 Cross-check whether any of the npm sibling's confirmed-but-unfixed/partially-fixed bugs (#7, #10, #11, #13, #15, #16 in that repo's tasks.md) have a Python-side equivalent that hasn't been checked yet — Constitution Principle VI explicitly warns against assuming either parity or divergence without live testing, and this check has not yet been done for the #7-#16 batch (only the original #1-#3 batch was cross-checked).
