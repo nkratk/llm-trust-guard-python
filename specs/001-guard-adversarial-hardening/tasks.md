@@ -111,10 +111,27 @@ low stakes.
   `multimodal_guard.py`'s equivalent pattern) to the `dan_jailbreak`
   alternation, ideally in lockstep with the npm sibling's fix for #19. Not
   yet attempted — this phase's scope was investigation only.
-- [ ] T015 The 132 confirmed-never-detected threat-groups span many
-  different guards/attack classes and are not yet triaged or prioritized —
-  needs its own scoping pass, mirroring npm sibling's T030. Raw
-  classification data was written to `/tmp/bisect-classification.json` in
-  the harness repo during this session (ephemeral, not committed —
-  regenerate via `llm-trust-guard-versions/classify-bisect.py` if needed
-  later).
+- [x] T015 Triaged the 132 never-detected threat-groups by guard, mirroring
+  the npm sibling's T030: `ToolChainValidator` (37), `ExternalDataGuard`
+  (37), `MultiModalGuard` (30), `InputSanitizer` (23), plus a small tail
+  (`RAGGuard` 3, `ConversationGuard` 2). Filed one issue per major cluster,
+  each explicitly parity-checked live against this repo's own guards (not
+  assumed identical to npm) before filing:
+  - [x] T015a [#8](https://github.com/nkratk/llm-trust-guard-python/issues/8)
+    `ToolChainValidator` — scoping question, parity with
+    [npm#20](https://github.com/nkratk/llm-trust-guard/issues/20).
+  - [x] T015b [#9](https://github.com/nkratk/llm-trust-guard-python/issues/9)
+    `ExternalDataGuard` — decode/normalize-before-matching gap, parity with
+    [npm#21](https://github.com/nkratk/llm-trust-guard/issues/21).
+  - [x] T015c [#10](https://github.com/nkratk/llm-trust-guard-python/issues/10)
+    `MultiModalGuard` — decode-gap + genuine URL-param-exfil signature gap,
+    parity with [npm#22](https://github.com/nkratk/llm-trust-guard/issues/22).
+  - [x] T015d [#11](https://github.com/nkratk/llm-trust-guard-python/issues/11)
+    `InputSanitizer` — decode-gap + content-shape gap, parity with
+    [npm#23](https://github.com/nkratk/llm-trust-guard/issues/23).
+- [ ] T016 File issues for the small-tail buckets (`RAGGuard` 3,
+  `ConversationGuard` 2) if/when prioritized — not done yet.
+- [ ] T017 None of #7-#11 have been fixed yet — investigation/triage only
+  this phase. #9/#10/#11 share a root cause (no decode/normalize layer
+  before content matching) with their npm counterparts — see npm sibling's
+  T032 note about a possible shared-utility fix across guards.
