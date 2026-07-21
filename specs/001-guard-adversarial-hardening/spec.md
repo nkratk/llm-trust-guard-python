@@ -105,6 +105,30 @@ correctly state which issues are open/fixed/merged/released without running
    filed as a GitHub issue, **Then** `tasks.md` is updated in the same
    work session.
 
+### User Story 4 - Distinguishing "we broke it" from "it never worked" (Priority: P2)
+
+As the maintainer, when a live-verify sweep finds a detection gap in the
+currently-shipped version, I need to know whether it's a regression (worked
+in an earlier release, broken by a later one) or a long-standing coverage
+gap (never worked, at any version) before scoping a fix — a silent
+regression is a different, higher-priority problem than a gap that was
+never covered. Mirrors the npm sibling repo's User Story 4 exactly; see that
+repo's spec.md for the full rationale.
+
+**Independent Test**: Given failing threat/guard pairs and fresh installs of
+every historical published version, bisect each one's blocked/total
+sequence across all versions and classify as regression, never-detected, or
+improved, then have an independent, fresh-context agent live-reproduce any
+claimed regression itself before it's reported as confirmed. A single-version
+1-of-N flicker is noted separately from a sustained, multi-version drop, not
+conflated with it.
+
+See `specs/001-guard-adversarial-hardening/tasks.md` Phase 5 (2026-07-20)
+for this methodology's first run on this repo: 133 failing threat-groups
+bisected across all 36 historical versions; 132 confirmed as long-standing
+gaps, zero Python-side regressions found (one parity gap with a confirmed
+npm-side regression, issue #7).
+
 ### Edge Cases
 
 - What happens when a GitHub issue's state and this repo's `tasks.md`

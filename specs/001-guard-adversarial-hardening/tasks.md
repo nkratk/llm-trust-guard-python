@@ -70,3 +70,51 @@ issue):
 - [x] T010b **Explicit release decision** — user confirmed 2026-07-19 alongside the npm sibling's release; `gh release create v0.21.3` run, publish workflow succeeded, confirmed live on PyPI.
 - [x] T011 Issue #4 auto-closed correctly on merge (full fix, no residual gap — confirmed via `gh issue view 4`, no incident here unlike the npm sibling repo's #5/#11/#15).
 - [ ] T012 Cross-check whether any of the npm sibling's confirmed-but-unfixed/partially-fixed bugs (#7, #10, #11, #13, #15, #16 in that repo's tasks.md) have a Python-side equivalent that hasn't been checked yet — Constitution Principle VI explicitly warns against assuming either parity or divergence without live testing, and this check has not yet been done for the #7-#16 batch (only the original #1-#3 batch was cross-checked).
+
+## Phase 5: Full-history regression bisection (2026-07-20) — COMPLETE
+
+**Trigger**: mirrors the npm sibling's Phase 5 (see that repo's tasks.md for
+full methodology) — a fresh-install run of the full 1189-threat PoC corpus
+against then-latest v0.21.3 found 133 Python threat-groups with zero
+detection; the question was whether any were regressions (worked before,
+broken now) versus long-standing gaps (never worked).
+
+**Method**: all 36 historical PyPI versions (v0.1.0-v0.21.3) already had
+fresh venv installs staged locally. Repaired two data-integrity problems in
+the historical harness first — missing `lib/` symlinks to the real
+per-version site-packages, and ~61% of PoCs missing the `sys.path`
+injection needed to test the intended version instead of silently falling
+through to an ambient one (found by a stray globally-installed
+`llm_trust_guard==0.4.0` polluting results). Then re-ran all 133
+threat-groups fresh (4,788 executions via `bisect-py.py`) and classified
+each threat's version-ordered blocked/total sequence.
+
+**Result**: 132/133 threat-groups are genuine long-standing coverage gaps —
+0 blocked at every version ever tested (v0.1.0 through v0.21.3), sample
+independently judge-verified as reproducible, not a data artifact. **None of
+the 133 are Python-side regressions** — no case of "worked in an earlier
+Python release, broken by a later one" was found. One single-version 1-of-5
+flicker (same threat/payload as a matching flicker on the npm side, at an
+unrelated version point) looks like non-deterministic guard-internal
+behavior rather than a real version-tied change; not chased further given
+low stakes.
+
+- [x] T013 Parity check for npm sibling's confirmed regression
+  ([npm#19](https://github.com/nkratk/llm-trust-guard/issues/19)):
+  `input_sanitizer.py`'s `dan_jailbreak` pattern
+  (`\bDAN\b\s*(?:mode|prompt|jailbreak|you\s+(?:are|can|will))`) has never
+  covered "DAN persona active"-style phrasing at any released version — not
+  a regression here (Python never had a broader pattern to regress from),
+  but shares the npm issue's root cause and fix. Filed as
+  [#7](https://github.com/nkratk/llm-trust-guard-python/issues/7).
+- [ ] T014 Fix T013: add `persona` (and consider `character`, matching
+  `multimodal_guard.py`'s equivalent pattern) to the `dan_jailbreak`
+  alternation, ideally in lockstep with the npm sibling's fix for #19. Not
+  yet attempted — this phase's scope was investigation only.
+- [ ] T015 The 132 confirmed-never-detected threat-groups span many
+  different guards/attack classes and are not yet triaged or prioritized —
+  needs its own scoping pass, mirroring npm sibling's T030. Raw
+  classification data was written to `/tmp/bisect-classification.json` in
+  the harness repo during this session (ephemeral, not committed —
+  regenerate via `llm-trust-guard-versions/classify-bisect.py` if needed
+  later).
