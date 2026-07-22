@@ -58,7 +58,12 @@ def _apply_one_step_transforms(text: str) -> list:
     hex_s = re.sub(r"\s", "", text)
     if len(hex_s) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_s):
         try:
-            d = binascii.unhexlify(hex_s).decode("utf-8", errors="strict")
+            # errors="replace" (not "strict") to match the npm sibling's
+            # Buffer.toString('utf-8'), which never throws on invalid bytes
+            # — a single stray non-UTF-8 byte (e.g. a Latin-1 smart quote)
+            # mixed into an otherwise-plain payload must not silently drop
+            # the whole decoded variant.
+            d = binascii.unhexlify(hex_s).decode("utf-8", errors="replace")
             if d != text:
                 out.append(d)
         except Exception:
@@ -67,7 +72,7 @@ def _apply_one_step_transforms(text: str) -> list:
     b64_s = re.sub(r"\s", "", text)
     if len(b64_s) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_s):
         try:
-            d = _b64.b64decode(b64_s + "==").decode("utf-8", errors="strict")
+            d = _b64.b64decode(b64_s + "==").decode("utf-8", errors="replace")
             if d != text:
                 out.append(d)
         except Exception:
