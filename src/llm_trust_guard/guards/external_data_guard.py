@@ -27,6 +27,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ..decode_variants import build_decode_variants
+
 LoggerFn = Optional[Callable[[str, str], None]]
 
 
@@ -221,36 +223,46 @@ class ExternalDataGuard:
                 violations.append("STALE_DATA")
                 threats.append("data_expired")
 
+        # Content checks 5-8 also scan de-obfuscated variants (URL/hex/
+        # base64/ROT13/reversed/homoglyph-normalized) — a raw pattern match
+        # alone is trivially bypassed by wrapping the payload in any of
+        # these encodings.
+        scan_targets = [content_str] + build_decode_variants(content_str)
+
         # 5. Content injection detection
         if self.config.scan_for_injection:
-            for p in INJECTION_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("INJECTION_DETECTED")
-                    threats.append(f"injection:{p.name}")
+            for target in scan_targets:
+                for p in INJECTION_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("INJECTION_DETECTED")
+                        threats.append(f"injection:{p.name}")
 
         # 6. Secret / credential detection
         if self.config.scan_for_secrets:
-            for p in SECRET_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("SECRET_DETECTED")
-                    threats.append(f"secret:{p.name}")
-            for p in PII_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("PII_DETECTED")
-                    threats.append(f"pii:{p.name}")
+            for target in scan_targets:
+                for p in SECRET_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("SECRET_DETECTED")
+                        threats.append(f"secret:{p.name}")
+                for p in PII_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("PII_DETECTED")
+                        threats.append(f"pii:{p.name}")
 
         # 7. Data exfiltration URL detection
         if self.config.scan_for_exfiltration:
-            for p in EXFILTRATION_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("EXFILTRATION_ATTEMPT")
-                    threats.append(f"exfil:{p.name}")
+            for target in scan_targets:
+                for p in EXFILTRATION_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("EXFILTRATION_ATTEMPT")
+                        threats.append(f"exfil:{p.name}")
 
         # 8. SSRF detection — private IPs, cloud metadata, dangerous schemes
-        for p in SSRF_PATTERNS:
-            if p.pattern.search(content_str):
-                violations.append("SSRF_ATTEMPT")
-                threats.append(f"ssrf:{p.name}")
+        for target in scan_targets:
+            for p in SSRF_PATTERNS:
+                if p.pattern.search(target):
+                    violations.append("SSRF_ATTEMPT")
+                    threats.append(f"ssrf:{p.name}")
 
         # Deduplicate
         unique_violations = list(dict.fromkeys(violations))
