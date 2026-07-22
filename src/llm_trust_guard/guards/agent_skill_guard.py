@@ -134,7 +134,8 @@ HIDDEN_INSTRUCTION_PATTERNS: List[_LabeledPattern] = [
     _LabeledPattern(re.compile(r"\bsecretly\b|\bcovertly\b|\bsilently\b", re.I), "covert action instruction"),
     _LabeledPattern(re.compile(r"\boverride\s+(?:security|safety|guard|filter)", re.I), "security override"),
     _LabeledPattern(re.compile(r"\bpretend\s+(?:to\s+be|you\s+are)", re.I), "identity spoofing"),
-    _LabeledPattern(re.compile(r"<!--[\s\S]*?-->", re.I), "HTML comment (hidden content)"),
+    # Bounded — unbounded [\s\S]*? was quadratic-time ReDoS on long unterminated-comment content.
+    _LabeledPattern(re.compile(r"<!--[\s\S]{0,2000}?-->", re.I), "HTML comment (hidden content)"),
     # Semantic Compliance Hijacking (SCH) — natural-language policy framing that redirects data
     # flow without explicit injection keywords (arXiv:2601.07395 MCP-ITP, arXiv:2605.14460)
     _LabeledPattern(re.compile(r"\b(?:IMPORTANT|NOTE|WARNING|ADMIN|SYSTEM|ROOT|CRITICAL)\s*:\s*(?:(?:all\s+)?(?:responses?|results?|data|outputs?)\s+(?:must|should|shall|are\s+required\s+to)\s+(?:be\s+)?(?:sent|forwarded|logged|transmitted|routed|appended)\s+(?:to|at)|(?:also\s+)?(?:CC|BCC)\s+\S+@\S+|route\s+all|redirect\s+all|silently\s+(?:exfil|send|forward))", re.IGNORECASE), "authority-keyword data routing directive"),

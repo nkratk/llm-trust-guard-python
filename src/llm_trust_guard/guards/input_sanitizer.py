@@ -86,7 +86,7 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"<%.*system.*%>", re.I), 0.85, "erb_system"),
 
     # Jailbreak patterns
-    InjectionPattern(re.compile(r"\bDAN\b\s*(?:mode|prompt|jailbreak|you\s+(?:are|can|will))", re.I), 0.9, "dan_jailbreak"),
+    InjectionPattern(re.compile(r"\bDAN\b\s*(?:mode|prompt|jailbreak|persona|character|you\s+(?:are|can|will))", re.I), 0.9, "dan_jailbreak"),
     InjectionPattern(re.compile(r"developer\s+mode", re.I), 0.5, "dev_mode"),
     InjectionPattern(re.compile(r"bypass\s+(your\s+)?(restrictions|filters|safety|security|rules|guidelines)", re.I), 0.9, "bypass_safety"),
     InjectionPattern(re.compile(r"jailbreak", re.I), 0.95, "jailbreak_keyword"),
@@ -123,8 +123,10 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r'"\s*(?:role|mode|authority)\s*"\s*:\s*"(?:admin|root|system|unrestricted|god)"', re.I), 0.9, "json_policy_role"),
     InjectionPattern(re.compile(r'"(?:ignore|override|bypass|disable)\s*(?:safety|rules|instructions?|alignment|guardrails?)"', re.I), 0.9, "json_policy_override"),
     InjectionPattern(re.compile(r'"(?:instructions?|system_prompt|behavior|policy)"\s*:\s*"', re.I), 0.7, "json_policy_instruction"),
-    InjectionPattern(re.compile(r"^\s*\[(?:system|admin|override|policy|config|rules)\]\s*$", re.I | re.M), 0.9, "ini_policy_section"),
-    InjectionPattern(re.compile(r"^\s*(?:mode|role|authority|instructions?|behavior)\s*=\s*.+$", re.I | re.M), 0.75, "ini_policy_assignment"),
+    # \s* bounded — unbounded form + MULTILINE was quadratic-time ReDoS
+    # (\s matches \n, every line boundary is a retry point).
+    InjectionPattern(re.compile(r"^\s{0,20}\[(?:system|admin|override|policy|config|rules)\]\s{0,20}$", re.I | re.M), 0.9, "ini_policy_section"),
+    InjectionPattern(re.compile(r"^\s{0,20}(?:mode|role|authority|instructions?|behavior)\s{0,10}=\s{0,10}.+$", re.I | re.M), 0.75, "ini_policy_assignment"),
     InjectionPattern(re.compile(r"<\s*(?:policy|config|rules|override|permissions?|instructions?)\s*>", re.I), 0.85, "xml_policy_tag"),
     InjectionPattern(re.compile(r"^---\s*\n\s*(?:role|system|policy|override|mode)\s*:", re.M), 0.85, "yaml_policy_header"),
     InjectionPattern(re.compile(r"\[\s*syst[3e]m\s*\]|\[\s*4dm[1i]n\s*\]", re.I), 0.9, "leetspeak_policy_section"),
@@ -211,10 +213,11 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     # Reciprocity
     InjectionPattern(re.compile(r"i(?:'ll| will)\s+(?:give|pay|reward|tip).*(?:if\s+you|for\s+(?:bypass|ignore|reveal|override))", re.I), 0.55, "pap_reciprocity_reward"),
     InjectionPattern(re.compile(r"in\s+(?:return|exchange)", re.I), 0.5, "pap_reciprocity_exchange"),
-    InjectionPattern(re.compile(r"\$?\d+\s*(?:dollar|tip|reward|payment)", re.I), 0.55, "pap_reciprocity_money"),
+    # \d+/\s* bounded — unbounded form was quadratic-time ReDoS (parity with npm sibling).
+    InjectionPattern(re.compile(r"\$?\d{1,10}\s{0,5}(?:dollar|tip|reward|payment)", re.I), 0.55, "pap_reciprocity_money"),
     InjectionPattern(re.compile(r"if\s+you\s+help\s+(?:me|us),?\s+(?:i|we)(?:'ll| will)", re.I), 0.5, "pap_reciprocity_help"),
     InjectionPattern(re.compile(r"i(?:'ve| have)\s+(?:already\s+)?(?:helped|supported|defended)\s+you", re.I), 0.55, "pap_reciprocity_past"),
-    InjectionPattern(re.compile(r"\d+\s*star\s*(?:review|rating)", re.I), 0.5, "pap_reciprocity_review"),
+    InjectionPattern(re.compile(r"\d{1,4}\s{0,5}star\s{0,5}(?:review|rating)", re.I), 0.5, "pap_reciprocity_review"),
     # Commitment
     InjectionPattern(re.compile(r"you\s+(?:already|previously|just)\s+(?:said|agreed|confirmed|allowed)", re.I), 0.7, "pap_commitment_previous"),
     InjectionPattern(re.compile(r"you\s+promised", re.I), 0.7, "pap_commitment_promise"),
@@ -243,7 +246,7 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     # Evidence
     InjectionPattern(re.compile(r"according\s+to\s+(?:research|studies|scientists|experts?)", re.I), 0.4, "pap_evidence_research"),
     InjectionPattern(re.compile(r"it(?:'s| is)\s+(?:proven|documented|established|verified)\s+(?:that|fact)", re.I), 0.45, "pap_evidence_proven"),
-    InjectionPattern(re.compile(r"\d+%\s+of\s+(?:experts?|scientists?|users?|people)\s+(?:agree|say|confirm)", re.I), 0.45, "pap_evidence_statistics"),
+    InjectionPattern(re.compile(r"\d{1,3}%\s{1,5}of\s{1,5}(?:experts?|scientists?|users?|people)\s{1,5}(?:agree|say|confirm)", re.I), 0.45, "pap_evidence_statistics"),
     # Emotional
     InjectionPattern(re.compile(r"i(?:'m| am)\s+(?:desperate|dying|suffering|sick|depressed)", re.I), 0.6, "pap_emotional_desperation"),
     InjectionPattern(re.compile(r"please.*?(?:need|beg).*?(?:bypass|override|ignore|reveal|system|admin)", re.I), 0.5, "pap_emotional_pleading"),
@@ -283,7 +286,7 @@ DEFAULT_PATTERNS: List[InjectionPattern] = [
     InjectionPattern(re.compile(r"system\s+override\s+(?:engaged?|activated?|enabled?|initiated?)", re.I), 0.85, "system_override_engaged"),
 
     # Passive instruction-void declaratives (caught after ZWSP/bidi strip)
-    InjectionPattern(re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|null|cancelled?|invalid|overridden?|revoked|rescinded|superseded)", re.I), 0.85, "instructions_void"),
+    InjectionPattern(re.compile(r"(?:your|the|previous|prior|all\s{1,5}(?:previous|prior))?\s{0,20}instructions?\s{1,10}(?:are|have\s{1,5}been|is)\s{1,10}(?:void|null|cancelled?|invalid|overridden?|revoked|rescinded|superseded)", re.I), 0.85, "instructions_void"),
     InjectionPattern(re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?|context)", re.I), 0.85, "forget_your_instructions"),
 ]
 # fmt: on
@@ -327,7 +330,8 @@ BENIGN_TRIGGER_RE = re.compile(
 # "ignore the previous output ..." to cancel the trigger. Benign coding prompts
 # do not contain URLs, emails, credentials, shell pipes, or amounts.
 SUPPRESSION_VETO_RE = re.compile(
-    r"https?://|[\w.+-]+@[\w-]+\.[a-z]{2,}|"
+    # Email branch bounded — same ReDoS shape as ExternalDataGuard's email_address.
+    r"https?://|[\w.+-]{1,64}@(?:[\w-]{1,63}\.){1,8}[a-z]{2,24}|"
     r"\b(?:api[\s_-]?keys?|passwords?|passwd|secrets?|credentials?|"
     r"private\s+keys?|ssn|social\s+security|access\s+tokens?)\b|"
     r"\bexfiltrat\w*|\brm\s+-rf\b|\|\s*sh\b|\bcurl\b|\bwget\b|"
@@ -357,42 +361,10 @@ class InputSanitizer:
         self.min_persuasion_techniques = min_persuasion_techniques
 
     def _build_input_variants(self, text: str) -> list:
-        """Generate de-obfuscated variants (URL/hex/base64/reverse/Cyrillic)."""
-        from urllib.parse import unquote
-        import binascii, base64 as b64
+        """Generate de-obfuscated variants for re-scanning."""
+        from ..decode_variants import build_decode_variants
 
-        variants = set()
-        if "%" in text:
-            try:
-                d = unquote(text.replace("+", " "))
-                if d != text:
-                    variants.add(d)
-            except Exception:
-                pass
-        hex_s = re.sub(r"\s", "", text)
-        if len(hex_s) >= 20 and re.fullmatch(r"[0-9a-fA-F]+", hex_s):
-            try:
-                d = binascii.unhexlify(hex_s).decode("utf-8", errors="replace")
-                if d != text:
-                    variants.add(d)
-            except Exception:
-                pass
-        b64_s = re.sub(r"\s", "", text)
-        if len(b64_s) >= 16 and re.fullmatch(r"[A-Za-z0-9+/]+=*", b64_s):
-            try:
-                d = b64.b64decode(b64_s + "==").decode("utf-8", errors="replace")
-                if d != text:
-                    variants.add(d)
-            except Exception:
-                pass
-        rev = text[::-1]
-        if rev != text:
-            variants.add(rev)
-        _CYR = str.maketrans("аеіоруАЕІОРУ", "aeiopyAEIOPY")
-        normed = text.translate(_CYR)
-        if normed != text:
-            variants.add(normed)
-        return list(variants)
+        return build_decode_variants(text)
 
     def sanitize(self, input_text: str) -> SanitizerResult:
         """Check input for prompt injection patterns."""

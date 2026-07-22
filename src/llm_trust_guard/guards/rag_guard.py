@@ -153,8 +153,9 @@ class RAGGuard:
     ]
 
     INDIRECT_INJECTION_PATTERNS: List[_PatternWithSeverity] = [
-        ("html_comment_injection", re.compile(r"<!--[\s\S]*?(ignore|override|system|instruction|admin)[\s\S]*?-->", re.IGNORECASE), 45),
-        ("markdown_hidden", re.compile(r"\[[\s\S]*?\]\(javascript:|data:text/html|about:blank\)", re.IGNORECASE), 50),
+        # Bounded — unbounded [\s\S]*? was quadratic-time ReDoS (parity with npm sibling).
+        ("html_comment_injection", re.compile(r"<!--[\s\S]{0,2000}?(ignore|override|system|instruction|admin)[\s\S]{0,2000}?-->", re.IGNORECASE), 45),
+        ("markdown_hidden", re.compile(r"\[[\s\S]{0,2000}?\]\(javascript:|data:text/html|about:blank\)", re.IGNORECASE), 50),
         ("invisible_link", re.compile(r"\[]\([^)]+\)"), 30),
         ("zero_width_chars", re.compile(r"[\u200B-\u200F\u2028-\u202F\uFEFF]{3,}"), 40),
         ("rtl_override", re.compile(r"[\u202A-\u202E\u2066-\u2069]"), 35),
@@ -173,7 +174,7 @@ class RAGGuard:
         ("html_attr_directive", re.compile(r"""(?:\balt|\btitle|\baria-label|\bdata-[a-z][a-z0-9-]*)\s*=\s*["'][^"']*(?:ignore\s+(?:all\s+)?(?:previous|prior|above)|system\s+prompt|new\s+instructions?|you\s+are\s+now|admin\s+mode|jailbreak)[^"']*["']""", re.IGNORECASE), 50),
         ("json_agent_directive", re.compile(r'"(_system|__override|_agent_instructions?|__system_prompt__|_assistant_role|__internal_directive|_meta_instruction)"\s*:', re.IGNORECASE), 50),
         # Markdown/HTML carriers for RAG injection (arXiv:2601.10923)
-        ("markdown_img_alt_injection", re.compile(r"!\[[^\]]*(?:ignore|system\s*:|new\s+instructions?|you\s+are\s+now|override|admin\s+mode|jailbreak)[^\]]*\]\([^)]*\)", re.IGNORECASE), 50),
+        ("markdown_img_alt_injection", re.compile(r"!\[[^\]]{0,2000}(?:ignore|system\s*:|new\s+instructions?|you\s+are\s+now|override|admin\s+mode|jailbreak)[^\]]{0,2000}\]\([^)]{0,1000}\)", re.IGNORECASE), 50),
         ("html_event_injection", re.compile(r"<(?:img|script|iframe|svg)\b[^>]*\bon(?:error|load|click|mouseover)\s*=\s*[\"'][^\"']+[\"'][^>]*>", re.IGNORECASE), 55),
     ]
 
@@ -739,7 +740,9 @@ class RAGGuard:
                 risk_contribution += 40 + min(30, total_zero_width * 5)
 
         # Whitespace pattern encoding
-        tab_space_re = re.compile(r"\s{4,}\t+\s+|\t{2,}\s+\t")
+        # Bounded — unbounded \s{4,}/\t+ was quadratic-time ReDoS on long runs
+        # of whitespace (\s overlaps \t, creating backtracking ambiguity).
+        tab_space_re = re.compile(r"\s{4,80}\t{1,20}\s{1,20}|\t{2,20}\s{1,20}\t")
         if tab_space_re.search(content):
             violations.append("whitespace_encoding")
             risk_contribution += 35

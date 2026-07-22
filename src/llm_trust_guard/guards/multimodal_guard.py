@@ -89,12 +89,15 @@ class MultiModalGuard:
         ("exfiltration_markers", re.compile(r"send\s+(to|this|data)\s+(to\s+)?https?://", re.IGNORECASE)),
         ("invisible_unicode", re.compile(r"[\u200B-\u200D\uFEFF\u2060-\u206F]")),
         ("json_policy_in_metadata", re.compile(r'"(?:role|instructions?|system|policy)"\s*:\s*"', re.IGNORECASE)),
-        ("ini_policy_in_metadata", re.compile(r"^\s*\[(?:system|admin|override|config)\]\s*$", re.IGNORECASE | re.MULTILINE)),
+        # \s* bounded — unbounded form + MULTILINE was quadratic-time ReDoS
+        # (\s matches \n, every line boundary is a retry point).
+        ("ini_policy_in_metadata", re.compile(r"^\s{0,20}\[(?:system|admin|override|config)\]\s{0,20}$", re.IGNORECASE | re.MULTILINE)),
         ("emoji_instruction_sequence", re.compile(r"(?:\U0001F513|\U0001F511|\U0001F6E1\uFE0F|\u2699\uFE0F|\U0001F527|\U0001F6AB|\u274C|\u2705)\s*(?:unlock|admin|override|bypass|disable|enable|grant|allow)", re.IGNORECASE)),
-        ("rebus_instruction_pattern", re.compile(r"(?:[A-Z]{2,}\s*[-=:>\u2192]\s*){3,}")),
+        # Bounded \u2014 unbounded [A-Z]{2,}/\s* was quadratic-time ReDoS.
+        ("rebus_instruction_pattern", re.compile(r"(?:[A-Z]{2,20}\s{0,5}[-=:>\u2192]\s{0,5}){3,}")),
         ("metadata_split_marker", re.compile(r"(?:part|step|fragment)\s*[1-9]\s*(?:of|:)", re.IGNORECASE)),
         # Instruction-void phrases — covers OCR, EXIF, ultrasonic, mind-map, video-frame containers
-        ("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.IGNORECASE)),
+        ("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s{1,5}(?:previous|prior))?\s{0,20}instructions?\s{1,10}(?:are|have\s{1,5}been|is)\s{1,10}(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.IGNORECASE)),
         ("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.IGNORECASE)),
         ("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.IGNORECASE)),
         # Activation / state-override phrases
