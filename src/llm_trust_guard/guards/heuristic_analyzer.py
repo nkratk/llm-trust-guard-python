@@ -168,8 +168,12 @@ INSTRUCTION_WORDS: Set[str] = {
 }
 
 # Pre-compiled patterns
+# Bounded — unbounded [\s\S]*? was quadratic-time ReDoS on long content with
+# many "User:"/"Q:" markers and no closing "A:"/"AI:" (found by the
+# permanent tests/test_redos_safety.py sweep; parity fix in npm sibling's
+# heuristic-analyzer.ts).
 _QA_PATTERN = re.compile(
-    r"(?:Q:|Question:|Human:|User:)[\s\S]*?(?:A:|Answer:|Assistant:|AI:)",
+    r"(?:Q:|Question:|Human:|User:)[\s\S]{0,1000}?(?:A:|Answer:|Assistant:|AI:)",
     re.IGNORECASE,
 )
 _IMPERATIVE_PATTERN = re.compile(

@@ -20,6 +20,10 @@ Enforced in **two places**:
 
 1. **Local** — `.githooks/pre-push` runs `scripts/verify.sh` before every push (and
    chains the Git-LFS pre-push hook). Install once: `bash scripts/install-hooks.sh`.
+   The hook fetches origin's tags first (`git fetch origin --tags`), since
+   G6/G9/G11 all key off `git describe --tags --abbrev=0` — without this, a
+   stale local tag can make those gates pass locally while CI (which always
+   sees origin's tags) correctly fails on the identical commit.
 2. **CI** — `.github/workflows/ci.yml` runs the same script server-side.
 
 ## The eight gates
@@ -37,6 +41,10 @@ Enforced in **two places**:
 | G9 | **Patch coverage**: changed `src/` lines since last tag must be ≥80% covered (`diff-cover` on `coverage.xml`) | new code is *actually* tested | **"new changes should have test cases"** |
 | G10 | **Freshness cadence**: `freshness.json` `lastFullScan` / each `checkedAt` within `ttlDays` (180) — `scripts/check-freshness.py`, date-only/offline | staleness *blocks* a push | **"definitely verify freshness"** |
 | G11 | **README documents API changes**: `src/llm_trust_guard/__init__.py` exports changed since last tag ⇒ `README.md` changed too (override `ALLOW_NO_README_UPDATE=1`) | docs can't drift behind the public API | **"keep README current with new changes"** |
+
+**Two standing regression tests run as part of G3** (no separate gate number — they're normal test files, automatically enforced whenever `pytest` runs):
+- `tests/test_redos_safety.py` — extracts every `re.compile(...)` pattern in `src/` and stress-tests each against a fixed adversarial seed corpus (scaling-ratio check, not a single absolute-time threshold — see the file's docstring for why), so a new catastrophic-backtracking regex fails the suite immediately instead of shipping and being found later by a manual sweep. Writing this test itself found two real bugs (`heuristic_analyzer.py`, `encoding_detector.py`) that earlier manual sweep rounds had missed.
+- `tests/test_decode_variants.py`'s content-length consistency check — asserts `decode_variants.py`'s input cap is never smaller than any guard's own `max_content_length` default, closing the specific silent-bypass bug class a v0.21.4 pre-merge review caught.
 
 ### Freshness (G10 + the weekly scan)
 

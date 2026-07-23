@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Permanent ReDoS-safety regression test** (`tests/test_redos_safety.py`): extracts every `re.compile(...)` pattern in `src/` and stress-tests each against a fixed adversarial seed corpus using a scaling-ratio check (not a single absolute-time threshold — CPython's regex engine is slow enough that some already-fixed, genuinely-linear patterns overlap in absolute time with real quadratic bugs at any single seed size; growth ratio across two sizes cleanly separates them regardless of the constant factor). Writing this test found two real bugs the v0.21.4 manual sweep had missed.
+- **Content-length consistency regression test** (`tests/test_decode_variants.py`): asserts `decode_variants.py`'s input cap is never smaller than any guard's own `max_content_length` default, closing the specific silent-bypass bug class a v0.21.4 pre-merge review caught.
+- `.githooks/pre-push` now fetches origin's tags before running `scripts/verify.sh`, parity fix with the npm sibling closing the same local/CI tag-drift gap.
+
+### Fixed
+
+- `heuristic_analyzer.py`'s `_QA_PATTERN` was catastrophic-backtracking on long content with many "User:"/"Q:" markers and no closing "A:"/"AI:" — found by the new permanent ReDoS-safety test, not the earlier manual sweep. Parity fix with npm sibling's `heuristic-analyzer.ts`.
+- `encoding_detector.py`'s `template_injection` pattern was catastrophic-backtracking on long content with many "{" characters — this file wasn't included in the earlier manual sweep here (npm's equivalent was already fixed in v4.32.5).
+
 ## 0.21.4 (2026-07-22)
 
 ### Fixed

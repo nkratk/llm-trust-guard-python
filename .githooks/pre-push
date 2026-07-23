@@ -7,6 +7,13 @@
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
+# Keep local tag visibility in sync with origin before verify.sh computes any
+# "changed since last tag" diff (G6/G9/G11). Without this, a stale local tag
+# can make those gates pass here while CI (which always sees origin's tags,
+# via fetch-depth: 0) fails on the identical commit — best-effort, so an
+# offline push isn't blocked by this alone.
+git fetch origin --tags --quiet --force 2>/dev/null || true
+
 echo "[pre-push] running verification (see VERIFICATION.md)…"
 if ! bash "$ROOT/scripts/verify.sh" </dev/null; then
   echo "[pre-push] ❌ verification failed — push aborted."
