@@ -81,10 +81,28 @@ _RE_FUNCS_WITH_PATTERN_ARG = {
 
 
 def _extract_patterns():
-    """Statically extract every re.<func>(pattern, ...) call's pattern
-    string (compile/search/match/fullmatch/sub/subn/split/findall/finditer),
-    using the AST so multi-line / concatenated string literals resolve
-    correctly (a plain regex extractor mis-parsed some of these)."""
+    """Statically extract every regex pattern string in src/, via two AST
+    shapes:
+    1. `re.<func>(pattern, ...)` calls (compile/search/match/fullmatch/sub/
+       subn/split/findall/finditer) — the pattern is the first positional arg.
+    2. Any call with a `pattern=` keyword argument holding a string literal —
+       covers regex patterns stored as dataclass/constructor fields and
+       compiled later via attribute access (e.g. output_filter.py's
+       `PIIPattern(pattern=r"...")`/`SecretPattern(pattern=r"...")`, later
+       compiled as `re.compile(pii_pat.pattern)`), which shape 1 can't see
+       since `pii_pat.pattern` isn't a literal at the re.compile() call site.
+    Using the AST (not a text scanner) so multi-line / concatenated string
+    literals resolve correctly.
+
+    An earlier version of this extractor only matched re.compile(...) calls
+    (shape 1's `compile` case). Broadened to the rest of shape 1 after
+    finding 81 inline re.search/match/sub/split/etc. calls that skipped
+    re.compile() entirely. Broadened again to shape 2 after an independent
+    review found the entire DEFAULT_PII_PATTERNS/DEFAULT_SECRET_PATTERNS
+    list in output_filter.py (43 patterns) was invisible to both prior
+    shapes — a real gap in a security-critical file (LLM-output secret/PII
+    redaction) that a narrower extractor would have kept silently unchecked.
+    """
     patterns = []
     for filepath in _walk_py_files(SRC_DIR):
         relpath = os.path.relpath(filepath, os.path.join(os.path.dirname(__file__), ".."))
@@ -95,25 +113,42 @@ def _extract_patterns():
         except SyntaxError:
             continue
         for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+
+            pattern_str = None
             if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
+                isinstance(node.func, ast.Attribute)
                 and node.func.attr in _RE_FUNCS_WITH_PATTERN_ARG
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == "re"
                 and node.args
             ):
                 try:
-                    pattern_str = ast.literal_eval(node.args[0])
+                    candidate = ast.literal_eval(node.args[0])
                 except Exception:
-                    continue
-                if not isinstance(pattern_str, str):
-                    continue
-                try:
-                    compiled = re.compile(pattern_str, re.IGNORECASE)
-                except re.error:
-                    continue
-                patterns.append((relpath, pattern_str, compiled))
+                    candidate = None
+                if isinstance(candidate, str):
+                    pattern_str = candidate
+
+            if pattern_str is None:
+                for kw in node.keywords:
+                    if kw.arg == "pattern":
+                        try:
+                            candidate = ast.literal_eval(kw.value)
+                        except Exception:
+                            candidate = None
+                        if isinstance(candidate, str):
+                            pattern_str = candidate
+                        break
+
+            if pattern_str is None:
+                continue
+            try:
+                compiled = re.compile(pattern_str, re.IGNORECASE)
+            except re.error:
+                continue
+            patterns.append((relpath, pattern_str, compiled))
     return patterns
 
 
@@ -127,8 +162,18 @@ _SINGLE_CHARS = ["a", ".", "%", "0", "A", "x", " ", "-", "[", "!", "#", "=", ":"
 SINGLE_CHAR_REPS = 20_000
 
 
+_HAVE_ALARM = hasattr(signal, "SIGALRM")
+
+
 def _time_search(compiled, seed):
-    signal.alarm(ALARM_TIMEOUT_S)
+    # signal.alarm is POSIX-only (no-op guarded here rather than requiring
+    # every call site to branch — an earlier version had the single-char
+    # loop branch on _HAVE_ALARM but the structural-seed loop call this
+    # function unconditionally, so it would crash with AttributeError on
+    # a platform without SIGALRM instead of degrading gracefully like its
+    # sibling loop, an inconsistency independent review caught).
+    if _HAVE_ALARM:
+        signal.alarm(ALARM_TIMEOUT_S)
     start = time.time()
     try:
         compiled.search(seed)
@@ -138,7 +183,8 @@ def _time_search(compiled, seed):
     except Exception:
         return time.time() - start
     finally:
-        signal.alarm(0)
+        if _HAVE_ALARM:
+            signal.alarm(0)
 
 
 def test_extractor_finds_a_nontrivial_number_of_patterns():
@@ -153,15 +199,14 @@ def test_no_pattern_shows_quadratic_or_worse_scaling_on_adversarial_input():
     patterns = _extract_patterns()
     violations = []
 
-    have_alarm = hasattr(signal, "SIGALRM")
-    old_handler = signal.signal(signal.SIGALRM, _alarm_handler) if have_alarm else None
+    old_handler = signal.signal(signal.SIGALRM, _alarm_handler) if _HAVE_ALARM else None
 
     try:
         for relpath, pattern_str, compiled in patterns:
             # Single-character-repeat seeds: absolute ceiling + alarm only.
             for ch in _SINGLE_CHARS:
                 seed = ch * SINGLE_CHAR_REPS
-                elapsed = _time_search(compiled, seed) if have_alarm else _time_search_no_alarm(compiled, seed)
+                elapsed = _time_search(compiled, seed)
                 if elapsed is None:
                     violations.append(f"{relpath} :: {pattern_str[:80]} :: TIMEOUT(>{ALARM_TIMEOUT_S}s) char={ch!r} reps={SINGLE_CHAR_REPS}")
                 elif elapsed * 1000 > ABS_CEILING_MS:
@@ -194,16 +239,7 @@ def test_no_pattern_shows_quadratic_or_worse_scaling_on_adversarial_input():
                             f"(ratio {ratio:.1f}x for a 4x size step — quadratic-shaped) tmpl={tmpl!r}"
                         )
     finally:
-        if have_alarm and old_handler is not None:
+        if _HAVE_ALARM and old_handler is not None:
             signal.signal(signal.SIGALRM, old_handler)
 
     assert violations == [], "Slow / quadratic-shaped (possibly catastrophic-backtracking) patterns found:\n" + "\n".join(violations)
-
-
-def _time_search_no_alarm(compiled, seed):
-    start = time.time()
-    try:
-        compiled.search(seed)
-    except Exception:
-        pass
-    return time.time() - start

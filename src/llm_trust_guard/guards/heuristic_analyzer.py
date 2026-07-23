@@ -168,14 +168,37 @@ INSTRUCTION_WORDS: Set[str] = {
 }
 
 # Pre-compiled patterns
-# Bounded — unbounded [\s\S]*? was quadratic-time ReDoS on long content with
+# Many-shot Q&A detection originally used a single regex spanning the whole
+# Q->A gap ([\s\S]*?, unbounded) — quadratic-time ReDoS on long content with
 # many "User:"/"Q:" markers and no closing "A:"/"AI:" (found by the
-# permanent tests/test_redos_safety.py sweep; parity fix in npm sibling's
-# heuristic-analyzer.ts).
-_QA_PATTERN = re.compile(
-    r"(?:Q:|Question:|Human:|User:)[\s\S]{0,1000}?(?:A:|Answer:|Assistant:|AI:)",
-    re.IGNORECASE,
-)
+# permanent tests/test_redos_safety.py sweep). A first fix bounded the gap
+# to {0,1000} chars, which closed the ReDoS but silently stopped detecting
+# any turn whose Q->A gap exceeds 1000 chars — a real many-shot-jailbreak
+# evasion (verified: a 5-shot payload with ~1500-char turns went from 5/5
+# detected to 0/5), caught by independent review of the npm sibling's
+# parity fix and confirmed to affect this file identically. Replaced with
+# two simple marker-only regexes (no unbounded middle-content quantifier,
+# so no backtracking risk at all) — see _count_qa_pairs below, which scans
+# marker positions with sequential non-overlapping finditer() calls,
+# mirroring exactly what the original unbounded regex matched (full-length
+# gaps included, no artificial cap).
+_Q_MARKER_PATTERN = re.compile(r"Q:|Question:|Human:|User:", re.IGNORECASE)
+_A_MARKER_PATTERN = re.compile(r"A:|Answer:|Assistant:|AI:", re.IGNORECASE)
+
+
+def _count_qa_pairs(input_text: str) -> int:
+    count = 0
+    search_pos = 0
+    while True:
+        qm = _Q_MARKER_PATTERN.search(input_text, search_pos)
+        if qm is None:
+            break
+        am = _A_MARKER_PATTERN.search(input_text, qm.end())
+        if am is None:
+            break
+        count += 1
+        search_pos = am.end()
+    return count
 _IMPERATIVE_PATTERN = re.compile(
     r"^(?:ignore|forget|disregard|override|bypass|reveal|show|tell|give|grant|"
     r"make|do|don't|never|always|you\s+(?:must|should|will|are|can))",
@@ -317,8 +340,8 @@ class HeuristicAnalyzer:
         score = 0.0
 
         # Many-shot detection: count Q&A-like pairs
-        qa_matches = _QA_PATTERN.findall(input_text)
-        is_shot_attack = len(qa_matches) >= self.config.many_shot_threshold
+        qa_count = _count_qa_pairs(input_text)
+        is_shot_attack = qa_count >= self.config.many_shot_threshold
         if is_shot_attack:
             score += 0.3
             violations.append("MANY_SHOT_PATTERN")

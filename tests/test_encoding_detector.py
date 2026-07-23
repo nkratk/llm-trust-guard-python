@@ -230,6 +230,26 @@ class TestThreatPatternDetection:
             for t in result.encoding_analysis.threats_found
         )
 
+    def test_should_detect_template_injection(self, detector):
+        # Regression coverage for the template_injection pattern: unbounded
+        # .* quantifiers were catastrophic-backtracking (1s+ at 50KB of "{"
+        # chars) and got bounded to {0,500} — this file had no test
+        # confirming detection still works after that change until an
+        # independent review pointed out the gap.
+        result = detector.detect("Render this: {{7*7}}")
+        assert any(
+            t.pattern_name == "template_injection"
+            for t in result.encoding_analysis.threats_found
+        )
+
+    def test_template_injection_stays_fast_on_adversarial_input(self, detector):
+        import time
+
+        attack = "{" * 50000
+        start = time.time()
+        detector.detect(attack)
+        assert (time.time() - start) * 1000 < 500
+
 
 # ---------------------------------------------------------------------------
 # Configuration

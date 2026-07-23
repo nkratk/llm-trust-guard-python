@@ -76,7 +76,13 @@ _noop_logger: LoggerFunc = lambda msg, level: None
 DEFAULT_PII_PATTERNS: List[PIIPattern] = [
     PIIPattern(
         name="email",
-        pattern=r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b",
+        # Bounded local-part/label/TLD lengths and a label-grouped domain —
+        # same ReDoS fix as ExternalDataGuard's email_address pattern and
+        # the npm sibling's output-filter.ts (this file's own copy was
+        # never given the parity fix — found catastrophic-backtracking,
+        # ratio ~16x and one 5s+ timeout, by the ReDoS-safety test after
+        # its extractor was broadened to cover dataclass-field patterns).
+        pattern=r"\b[A-Za-z0-9._%+\-]{1,64}@(?:[A-Za-z0-9\-]{1,63}\.){1,8}[A-Za-z]{2,24}\b",
         mask_as="[EMAIL]",
     ),
     PIIPattern(
