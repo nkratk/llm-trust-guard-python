@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Permanent ReDoS-safety regression test** (`tests/test_redos_safety.py`): extracts regex patterns from `src/` via two AST shapes — `re.<func>(pattern, ...)` calls (compile/search/match/fullmatch/sub/subn/split/findall/finditer) and any call with a `pattern=` keyword argument holding a string literal — and stress-tests each against a fixed adversarial seed corpus using a scaling-ratio check (not a single absolute-time threshold — CPython's regex engine is slow enough that some already-fixed, genuinely-linear patterns overlap in absolute time with real quadratic bugs at any single seed size; growth ratio across two sizes cleanly separates them regardless of the constant factor).
+  - The extractor originally matched only `re.compile(...)` calls; broadened to the rest of `re.<func>(...)` after the npm sibling's analogous `pattern:`/ALL-CAPS-`const` extractor turned out to miss ~28% of its regex literals — this repo's broadening found no new bugs among the 81 additional `re.search`/`re.sub`/etc. call sites. Broadened again to the `pattern=` kwarg shape after independent review found the entire `DEFAULT_PII_PATTERNS`/`DEFAULT_SECRET_PATTERNS` list in `output_filter.py` (35 patterns, stored as dataclass fields and compiled later via attribute access) was invisible to both prior shapes — this time the broadening found a real bug (see Fixed).
+  - Also fixed a portability bug: the structural-seed loop called `_time_search` (which uses `signal.alarm`) unconditionally, while the single-character-seed loop correctly branched on `hasattr(signal, "SIGALRM")` — meant the structural loop would crash with `AttributeError` on a platform without `SIGALRM` (e.g. Windows) instead of degrading gracefully. `_time_search` now internally no-ops the alarm calls when unavailable.
+- **Content-length consistency regression test** (`tests/test_decode_variants.py`): asserts `decode_variants.py`'s input cap is never smaller than any guard's own `max_content_length` default, closing the specific silent-bypass bug class a v0.21.4 pre-merge review caught.
+- `.githooks/pre-push` now fetches origin's tags before running `scripts/verify.sh`, parity fix with the npm sibling closing the same local/CI tag-drift gap.
+- `tests/test_heuristic_analyzer.py`, `tests/test_encoding_detector.py::TestThreatPatternDetection::test_should_detect_template_injection`: this repo had no dedicated regression tests confirming the `_QA_PATTERN`/`template_injection` ReDoS fixes preserved detection — independent review flagged the gap; added.
+
+### Fixed
+
+- `output_filter.py`'s `email` PII pattern (`\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b`) was catastrophic-backtracking (ratio ~16x, one 5s+ timeout on adversarial input) — this exact bug shape was already found and fixed elsewhere (`ExternalDataGuard`'s `email_address`, and this file's own npm sibling `output-filter.ts`), but this file's copy never got the parity fix and was entirely invisible to the ReDoS-safety test until its extractor was broadened to cover dataclass-field patterns (see Added). Applied the same bounded fix (`{1,64}@(?:...){1,8}[A-Za-z]{2,24}`) used elsewhere.
+- `heuristic_analyzer.py`'s `_QA_PATTERN` was catastrophic-backtracking on long content with many "User:"/"Q:" markers and no closing "A:"/"AI:" — found by the new permanent ReDoS-safety test, not the earlier manual sweep. A first fix bounded the gap to `{0,1000}` chars, parity with npm's initial fix; independent review of the npm sibling found this created a real many-shot-detection bypass (any turn whose Q→A gap exceeds 1000 chars silently stopped being counted — verified 5/5 → 0/5 on a long-turn payload) and confirmed this file had the identical bug. Replaced with a linear marker-position scan (`_count_qa_pairs`) that has no length cap and no backtracking risk at all — full detection restored while staying fast on adversarial input.
+- `encoding_detector.py`'s `template_injection` pattern was catastrophic-backtracking on long content with many "{" characters — this file wasn't included in the earlier manual sweep here (npm's equivalent was already fixed in v4.32.5).
+
 ## 0.21.4 (2026-07-22)
 
 ### Fixed

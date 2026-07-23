@@ -2,6 +2,7 @@
 Port of decode-variants.test.ts to pytest.
 """
 import base64
+import re
 import sys
 import os
 import time
@@ -9,6 +10,45 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from llm_trust_guard.decode_variants import build_decode_variants
+
+
+class TestInputLengthCapVsGuardContentLengthLimits:
+    """Regression test for a real bug a final pre-merge review caught in
+    v0.21.4: build_decode_variants' input cap (originally 20,000) sat below
+    ExternalDataGuard's own default max_content_length (50,000), so content
+    between the two thresholds was silently never decoded, not just never
+    rejected for size — a real bypass, not just a perf knob.
+
+    Statically scans every guard for a `max_content_length: int = <N>`-style
+    default (source-level, not a hardcoded guard list) so a FUTURE guard
+    with a larger default trips this test too, not just today's one guard.
+    """
+
+    def test_max_input_length_is_geq_every_guards_default_max_content_length(self):
+        decode_variants_path = os.path.join(os.path.dirname(__file__), "..", "src", "llm_trust_guard", "decode_variants.py")
+        with open(decode_variants_path) as f:
+            decode_variants_src = f.read()
+        cap_match = re.search(r"_MAX_INPUT_LENGTH\s*=\s*([\d_]+)", decode_variants_src)
+        assert cap_match, "could not find _MAX_INPUT_LENGTH in decode_variants.py — extraction regex drifted"
+        cap = int(cap_match.group(1).replace("_", ""))
+
+        guards_dir = os.path.join(os.path.dirname(__file__), "..", "src", "llm_trust_guard", "guards")
+        default_re = re.compile(r"max\w*content_length\w*\s*:\s*int\s*=\s*([\d_]+)", re.IGNORECASE)
+        found = []
+        for filename in os.listdir(guards_dir):
+            if not filename.endswith(".py"):
+                continue
+            with open(os.path.join(guards_dir, filename)) as f:
+                src = f.read()
+            for m in default_re.finditer(src):
+                found.append((filename, int(m.group(1).replace("_", ""))))
+
+        assert found, "no max_content_length-style default found in any guard — extraction regex drifted, or the config was renamed"
+        too_large = [(f, v) for f, v in found if v > cap]
+        assert too_large == [], (
+            f"decode_variants.py's _MAX_INPUT_LENGTH ({cap}) is smaller than: {too_large} "
+            "— content between these thresholds would be silently never decoded"
+        )
 
 
 class TestSingleLayerDecodes:

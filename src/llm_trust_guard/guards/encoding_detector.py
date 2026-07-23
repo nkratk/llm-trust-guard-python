@@ -263,10 +263,13 @@ _DEFAULT_THREAT_PATTERNS: List[ThreatPattern] = [
         severity="critical",
     ),
     # Template Injection
+    # Bounded — unbounded .* was quadratic-time (1s+ at 50KB) on long
+    # content with many "{" characters and no closing "}}" (parity fix,
+    # this file wasn't included in the earlier manual ReDoS sweep here).
     ThreatPattern(
         name="template_injection",
         pattern=re.compile(
-            r"(?:\{\{.*\}\}|\$\{.*\}|<%.*%>|<\?.*\?>|\[\[.*\]\])",
+            r"(?:\{\{.{0,500}\}\}|\$\{.{0,500}\}|<%.{0,500}%>|<\?.{0,500}\?>|\[\[.{0,500}\]\])",
             re.IGNORECASE,
         ),
         severity="high",

@@ -265,6 +265,10 @@ WildChat filters toxic content but not prompt-injection intent. Canonical-marker
 
 For higher detection on adversarial corpora, plug in an ML classifier via the [DetectionClassifier interface](#pluggable-detection).
 
+### Security: automated ReDoS regression testing
+
+Catastrophic-backtracking regexes were previously only caught by one-off manual stress-test sweeps. `tests/test_redos_safety.py` now extracts every `re.compile(...)` pattern under `src/` via AST parsing and stress-tests each against a fixed adversarial seed corpus at two scaling sizes, flagging any pattern whose runtime grows super-linearly — this is a permanent, automated check (part of the standard test suite, enforced by CI and the pre-push hook) rather than a one-off manual sweep. Writing it found two more real cases (`heuristic_analyzer.py`'s `_QA_PATTERN`, `encoding_detector.py`'s `template_injection`) that earlier manual sweep rounds had missed.
+
 ## Defense In Depth
 
 This package is one layer. For production systems, combine with:
