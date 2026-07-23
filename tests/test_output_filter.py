@@ -131,6 +131,43 @@ class TestIpAddressVersionStringFalsePositive:
         r = self.filter.filter("Please upgrade to v10.4.32.3 -- the server at 192.168.1.1 needs it too")
         assert r.filtered_response == "Please upgrade to v10.4.32.3 -- the server at [IP_ADDRESS] needs it too"
 
+    def test_masks_a_real_ip_inside_an_object_field_not_just_a_bare_string(self):
+        # Coverage gap independent review flagged: the earlier test suite only
+        # exercised the top-level string path, never _mask_pii_in_string
+        # (reached via _filter_object for nested string values).
+        r = self.filter.filter({"note": "Please upgrade to v10.4.32.3", "server": "contact 192.168.1.1"})
+        assert r.filtered_response == {"note": "Please upgrade to v10.4.32.3", "server": "contact [IP_ADDRESS]"}
+
+    def test_does_not_suppress_a_real_ip_when_a_version_keyword_appears_nearby_but_in_a_different_clause(self):
+        # Independent review found an earlier version of this fix -- whose
+        # window had no clause-boundary awareness -- silently left this IP
+        # undetected AND unmasked, because "release" here is a document-
+        # section label with no relation to the number, but still fell
+        # within the (too permissive) window.
+        assert self._is_ip_detected("This release: connect to 10.4.32.3 for support") is True
+        assert self._is_ip_detected("Release notes. The server at 10.4.32.3 is down") is True
+        assert self._is_ip_detected("upgrade, IP is 10.4.32.3") is True
+        r = self.filter.filter("This release: connect to 10.4.32.3 for support")
+        assert r.filtered_response == "This release: connect to [IP_ADDRESS] for support"
+
+    def test_does_not_flag_a_version_string_via_the_reversed_string_obfuscation_scan_variant(self):
+        # Independent review found this exact input, scanned through the
+        # full obfuscation-scan pipeline (not just the standalone regex):
+        # reversing "release 12.34.56.78 today" scrambles "release" ->
+        # "esaeler" (no longer matches the keyword) while the digit-and-dot
+        # IP shape survives (just reordered), so the reversed variant
+        # independently re-flagged a version string the original text
+        # correctly suppressed.
+        assert self._is_ip_detected("release 12.34.56.78 today") is False
+
+    def test_still_detects_genuinely_obfuscated_pii_via_the_same_scan_variant_pipeline(self):
+        # Confirms the fix above is scoped to ip_address only, not a
+        # blanket disabling of obfuscation-variant scanning.
+        import base64
+        b64_email = base64.b64encode(b"user@example.com").decode()
+        r = self.filter.filter(b64_email)
+        assert any(p.type == "email" for p in r.pii_detected)
+
 
 class TestRoleBasedFiltering:
     def test_should_apply_role_specific_field_filters(self):

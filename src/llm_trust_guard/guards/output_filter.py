@@ -382,10 +382,34 @@ class OutputFilter:
                         continue
                     regex = re.compile(pii_pat.pattern, pii_pat.flags)
                     if pii_pat.name == "ip_address":
-                        # Needs match *position* to apply the version-context
-                        # exclusion (see _is_version_context), which findall()
-                        # can't provide — use finditer() and derive both the
-                        # match list and locations from the same filtered set.
+                        # Only scan the ORIGINAL text (target == output_str),
+                        # not the de-obfuscated scan variants (reversed/hex/
+                        # base64/etc.) built below. An earlier version tried
+                        # scanning variants too but skipping the version-
+                        # context exclusion there, reasoning "obfuscation
+                        # itself is suspicious" — that reintroduced the exact
+                        # bug it was meant to fix, just via a different path:
+                        # reversing "release 12.34.56.78 today" scrambles the
+                        # keyword ("release" -> "esaeler", no longer matches)
+                        # while the digit-and-dot IP shape survives (just
+                        # reordered), so the reversed variant independently
+                        # re-flagged the version string the original text
+                        # correctly suppressed, regardless of whether the
+                        # exclusion was applied to that variant or not.
+                        # Skipping ip_address for variants entirely (rather
+                        # than trying to map match positions back into the
+                        # original text's coordinate space) is the same
+                        # tradeoff this repo's npm sibling makes for the
+                        # identical reversed-string-scan problem, and IP
+                        # addresses are a much less likely deliberate-
+                        # obfuscation target than email/SSN/credit-card in
+                        # this guard's threat model. Needs match *position*
+                        # for the version-context exclusion (see
+                        # _is_version_context), which findall() can't
+                        # provide — use finditer() and derive both the match
+                        # list and locations from the same filtered set.
+                        if target != output_str:
+                            continue
                         match_objs = [
                             m for m in regex.finditer(target)
                             if not self._is_version_context(target, m.start())
@@ -622,18 +646,31 @@ class OutputFilter:
     _IP_VERSION_KEYWORD_RE = re.compile(r"\b(?:version|release|upgrade|update)\b", re.I)
     _IP_VERSION_CONTEXT_WINDOW = 25
 
+    _IP_VERSION_CLAUSE_BREAK_CHARS = ":;.,"
+
     @staticmethod
     def _is_version_context(text: str, start: int) -> bool:
         """True if a version-indicating keyword (version/release/upgrade/
-        update) appears shortly before position `start` in `text`. Used to
-        suppress ip_address false positives on version-number strings whose
-        every octet happens to be a valid IPv4 component (e.g. "10.4.32.3",
-        structurally identical to a real IP by shape alone) — see the
-        ip_address PIIPattern's comment. A bare "v" prefix (e.g.
-        "v10.4.32.3") needs no special handling here — the ip_address
-        pattern's own leading \\b already excludes it, since a digit
-        immediately preceded by a letter is word-to-word (no boundary)
-        either way; confirmed empirically, not just assumed.
+        update) appears shortly before position `start` in `text`, IN THE
+        SAME CLAUSE — the search window is truncated at the nearest
+        preceding clause/sentence-break character (":;.,") so a keyword
+        that's merely nearby but semantically unrelated (e.g. "release" as
+        a document-section label in "This release: connect to 10.4.32.3")
+        doesn't suppress a real IP. Used to suppress ip_address false
+        positives on version-number strings whose every octet happens to
+        be a valid IPv4 component (e.g. "10.4.32.3", structurally
+        identical to a real IP by shape alone) — see the ip_address
+        PIIPattern's comment. A bare "v" prefix (e.g. "v10.4.32.3") needs
+        no special handling here — the ip_address pattern's own leading
+        \\b already excludes it, since a digit immediately preceded by a
+        letter is word-to-word (no boundary) either way; confirmed
+        empirically, not just assumed.
+
+        An earlier version of this check used the full window with no
+        clause-break truncation — independent review found it silently
+        left a real IP undetected *and unmasked* whenever an unrelated
+        keyword occurrence happened to sit within the window, a worse
+        outcome (silent PII leakage) than the false positive being fixed.
 
         Implemented as a post-match context check rather than embedded in
         the regex (as npm's equivalent does via a JS negative lookbehind)
@@ -645,6 +682,9 @@ class OutputFilter:
         size.
         """
         window = text[max(0, start - OutputFilter._IP_VERSION_CONTEXT_WINDOW):start]
+        last_break = max(window.rfind(c) for c in OutputFilter._IP_VERSION_CLAUSE_BREAK_CHARS)
+        if last_break != -1:
+            window = window[last_break + 1:]
         return bool(OutputFilter._IP_VERSION_KEYWORD_RE.search(window))
 
     def _generate_mask(self, length: int) -> str:
