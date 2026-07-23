@@ -86,3 +86,15 @@ class TestSafetyBounds:
 
     def test_handles_empty_input_without_raising(self):
         build_decode_variants("")
+
+    def test_still_decodes_content_within_a_guards_default_max_content_length(self):
+        # Regression test: ExternalDataGuard's default max_content_length is
+        # 50,000 — content under that limit is neither rejected for size
+        # nor, previously, decoded, because the decode-variant cap (20,000)
+        # was smaller than the guard's own size threshold. That gap is why
+        # the cap now sits above every guard's default max_content_length.
+        raw = "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+        b64 = base64.b64encode(raw.encode()).decode()
+        content = " " * 45_000 + b64
+        variants = build_decode_variants(content)
+        assert any("169.254.169.254" in v for v in variants)

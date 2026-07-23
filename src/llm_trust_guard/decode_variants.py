@@ -26,15 +26,20 @@ _INVISIBLE_CHARS_RE = re.compile(
     "[​-‏‪-‮⁦-⁩⁠᠎﻿­]"
 )
 
-# Obfuscated payloads in practice are short (a wrapped phrase, a URL, a
-# jailbreak sentence) - there is no legitimate reason to decode-and-rescan
-# tens of thousands of characters just to catch one hidden instruction.
-# Capping input size here is deliberate defense-in-depth against
-# catastrophic-backtracking regexes elsewhere in the codebase: this function
-# turns ONE pattern-scan of the input into up to 40 (one per decode
-# variant), so any latent ReDoS in a caller's pattern set becomes ~40x more
-# reachable unless the input fed through it is bounded.
-_MAX_INPUT_LENGTH = 20_000
+# Some cap is still worth keeping as defense-in-depth against any
+# not-yet-found catastrophic-backtracking regex elsewhere in the codebase
+# (this function turns ONE pattern-scan into up to 40), but a cap below a
+# guard's own max_content_length is a silent detection bypass, not safety -
+# content between the two thresholds is neither decoded nor rejected for
+# size. Must exceed every guard's default max_content_length (largest is
+# ExternalDataGuard's 50,000). Deliberately lower than the npm sibling's
+# equivalent cap (100,000): InputSanitizer's 170+ patterns run against
+# CPython's slower regex engine, so matching npm's value costs ~770ms
+# worst-case here vs npm's ~30ms — 65,000 (15,000 headroom above the 50,000
+# threshold) keeps worst-case latency around 300ms while still closing the
+# same bypass. Every guard pattern still scans linearly (not
+# quadratically) at this size - see CHANGELOG's ReDoS hardening entry.
+_MAX_INPUT_LENGTH = 65_000
 _MAX_DEPTH = 3
 _MAX_VARIANTS = 40
 
