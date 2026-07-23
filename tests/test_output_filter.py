@@ -95,6 +95,43 @@ class TestFalsePositives:
         assert not any(p.type == "bank_account" for p in result.pii_detected)
 
 
+class TestIpAddressVersionStringFalsePositive:
+    """Regression coverage for #10: ip_address false-positived on dotted
+    version strings whose every octet happens to be a valid IPv4 component
+    (e.g. "10.4.32.3"). Parity with tests/output-filter.test.ts."""
+
+    def setup_method(self):
+        self.filter = OutputFilter()
+
+    def _is_ip_detected(self, text):
+        return any(p.type == "ip_address" for p in self.filter.filter(text).pii_detected)
+
+    def test_does_not_flag_out_of_range_octets(self):
+        assert self._is_ip_detected("Error code 999.999.999.999 invalid") is False
+
+    def test_does_not_flag_a_version_string_preceded_by_a_version_keyword(self):
+        assert self._is_ip_detected("Please upgrade to 10.4.32.3 before Friday") is False
+        assert self._is_ip_detected("Now on version 10.4.32.3") is False
+        assert self._is_ip_detected("release 10.4.32.3 is out") is False
+        assert self._is_ip_detected("Update to v10.4.32.3 today") is False
+        assert self._is_ip_detected("V10.4.32.3") is False
+
+    def test_still_flags_real_ip_addresses_including_near_miss_cases(self):
+        assert self._is_ip_detected("The server IP is 192.168.1.1, contact admin.") is True
+        assert self._is_ip_detected("Connect to 10.0.0.1 via SSH") is True
+        # version keyword present but too far from the number to plausibly qualify it
+        assert self._is_ip_detected("Server version 2.1 is running at 10.4.32.3") is True
+        assert self._is_ip_detected("Blocklisted address: 8.8.8.8") is True
+        # "coverage"/"diverse" contain "ver" as a substring — must not trip the keyword check
+        assert self._is_ip_detected("diverse coverage from 172.16.0.5") is True
+        # Roman numeral "V" with a space is not the tight no-gap "v10.4.32.3" prefix case
+        assert self._is_ip_detected("Chapter V 10.0.0.1") is True
+
+    def test_masks_real_ips_but_leaves_version_strings_unmasked_in_the_same_string(self):
+        r = self.filter.filter("Please upgrade to v10.4.32.3 -- the server at 192.168.1.1 needs it too")
+        assert r.filtered_response == "Please upgrade to v10.4.32.3 -- the server at [IP_ADDRESS] needs it too"
+
+
 class TestRoleBasedFiltering:
     def test_should_apply_role_specific_field_filters(self):
         role_filter = OutputFilter(

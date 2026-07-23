@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `ExternalDataGuard`'s `role_override` pattern false-positived on ordinary business language using "act as a/an X" with a non-authority noun (e.g. "we act as an intermediary between buyer and seller") — closes #7's `role_override` sub-bug. Now requires an authority/system-impersonation noun (admin, root, superuser, ...) after "act as a/an", parity port of npm's already-fixed, already-adversarially-reviewed `external-data-guard.ts` pattern.
+- `OutputFilter`'s `ip_address` pattern was unbounded (no octet range check) and false-positived on dotted version strings whose every component happens to be a valid octet (e.g. "10.4.32.3", structurally identical to a real IPv4 address by shape alone) — closes #10 (parity gap: npm had already fixed both the octet-bounding and this deeper version-string case; neither had been ported here). Octet-bounded to 0-255, plus a version-context check (suppresses the match when a version-indicating keyword or bare `v` prefix appears shortly before it) implemented as a post-match context check rather than embedded in the regex, since Python's `re` module only supports fixed-width lookbehind (confirmed via direct test) unlike npm's regex engine.
+
 ## 0.21.5 (2026-07-23)
 
 ### Added

@@ -106,8 +106,17 @@ DEFAULT_PII_PATTERNS: List[PIIPattern] = [
         mask_as="[CREDIT_CARD]",
     ),
     PIIPattern(
+        # Octet-bounded (0-255) — parity port of npm's output-filter.ts fix,
+        # closes #10's "safe, uncontroversial minimum" portion. The deeper
+        # version-string ambiguity (every octet valid, e.g. "10.4.32.3" —
+        # structurally identical to a real IPv4 address by shape alone) is
+        # handled separately in filter()/_mask_pii_in_string() via
+        # _is_version_context(), since Python's re module has no
+        # variable-length lookbehind (unlike npm's regex, which embeds the
+        # equivalent check directly in the pattern) — see that function's
+        # docstring for why this needs special-casing here instead.
         name="ip_address",
-        pattern=r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        pattern=r"\b(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b",
         mask_as="[IP_ADDRESS]",
     ),
     PIIPattern(
@@ -372,7 +381,20 @@ class OutputFilter:
                     if pii_pat.name in detected_pii:
                         continue
                     regex = re.compile(pii_pat.pattern, pii_pat.flags)
-                    matches = regex.findall(target)
+                    if pii_pat.name == "ip_address":
+                        # Needs match *position* to apply the version-context
+                        # exclusion (see _is_version_context), which findall()
+                        # can't provide — use finditer() and derive both the
+                        # match list and locations from the same filtered set.
+                        match_objs = [
+                            m for m in regex.finditer(target)
+                            if not self._is_version_context(target, m.start())
+                        ]
+                        matches = [m.group(0) for m in match_objs]
+                        locations = [f"index:{m.start()}" for m in match_objs]
+                    else:
+                        matches = regex.findall(target)
+                        locations = self._find_locations(target, regex)
                     if matches:
                         detected_pii.add(pii_pat.name)
                         pii_detections.append(
@@ -380,7 +402,7 @@ class OutputFilter:
                                 type=pii_pat.name,
                                 count=len(matches),
                                 masked=True,
-                                locations=self._find_locations(target, regex),
+                                locations=locations,
                             )
                         )
                         violations.append(f"PII_DETECTED_{pii_pat.name.upper()}")
@@ -423,7 +445,13 @@ class OutputFilter:
             for pii_pat in self.pii_patterns:
                 regex = re.compile(pii_pat.pattern, pii_pat.flags)
                 replacement = pii_pat.mask_as or self._generate_mask(8)
-                filtered_output = regex.sub(replacement, filtered_output)
+                if pii_pat.name == "ip_address":
+                    filtered_output = regex.sub(
+                        lambda m, _r=replacement, _s=filtered_output: m.group(0) if self._is_version_context(_s, m.start()) else _r,
+                        filtered_output,
+                    )
+                else:
+                    filtered_output = regex.sub(replacement, filtered_output)
         elif isinstance(filtered_output, dict) or isinstance(filtered_output, list):
             filtered_output = self._filter_object(
                 filtered_output, role, filtered_fields, pii_detections
@@ -582,8 +610,42 @@ class OutputFilter:
         for pii_pat in self.pii_patterns:
             regex = re.compile(pii_pat.pattern, pii_pat.flags)
             replacement = pii_pat.mask_as or self._generate_mask(8)
-            result = regex.sub(replacement, result)
+            if pii_pat.name == "ip_address":
+                result = regex.sub(
+                    lambda m, _r=replacement, _s=result: m.group(0) if self._is_version_context(_s, m.start()) else _r,
+                    result,
+                )
+            else:
+                result = regex.sub(replacement, result)
         return result
+
+    _IP_VERSION_KEYWORD_RE = re.compile(r"\b(?:version|release|upgrade|update)\b", re.I)
+    _IP_VERSION_CONTEXT_WINDOW = 25
+
+    @staticmethod
+    def _is_version_context(text: str, start: int) -> bool:
+        """True if a version-indicating keyword (version/release/upgrade/
+        update) appears shortly before position `start` in `text`. Used to
+        suppress ip_address false positives on version-number strings whose
+        every octet happens to be a valid IPv4 component (e.g. "10.4.32.3",
+        structurally identical to a real IP by shape alone) — see the
+        ip_address PIIPattern's comment. A bare "v" prefix (e.g.
+        "v10.4.32.3") needs no special handling here — the ip_address
+        pattern's own leading \\b already excludes it, since a digit
+        immediately preceded by a letter is word-to-word (no boundary)
+        either way; confirmed empirically, not just assumed.
+
+        Implemented as a post-match context check rather than embedded in
+        the regex (as npm's equivalent does via a JS negative lookbehind)
+        because Python's re module only supports FIXED-width lookbehind,
+        and the keyword alternatives here have different lengths
+        (confirmed via direct test: `re.error: look-behind requires
+        fixed-width pattern`). Only ever inspects a small, fixed-size
+        slice of `text`, so this stays fast regardless of overall input
+        size.
+        """
+        window = text[max(0, start - OutputFilter._IP_VERSION_CONTEXT_WINDOW):start]
+        return bool(OutputFilter._IP_VERSION_KEYWORD_RE.search(window))
 
     def _generate_mask(self, length: int) -> str:
         if self.preserve_length:
