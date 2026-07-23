@@ -10,8 +10,16 @@ on someone remembering to re-run a throwaway script. Writing this permanent
 version is itself what found two more real bugs (heuristic_analyzer.py,
 encoding_detector.py) the earlier manual rounds had missed.
 
-Every `re.compile(...)` regex literal in src/ is extracted (not a
-hand-maintained list — new files/patterns are picked up automatically).
+Every `re.<func>(pattern, ...)` regex literal in src/ is extracted (not a
+hand-maintained list — new files/patterns are picked up automatically),
+covering compile/search/match/fullmatch/sub/subn/split/findall/finditer.
+An earlier version only matched `re.compile(...)` calls; an audit (prompted
+by finding the analogous gap in the npm sibling's extractor, which missed
+~28% of its regex literals) found 81 inline `re.search`/`re.sub`/etc. calls
+in this repo that never go through `re.compile()` and were entirely
+invisible to that narrower extractor. Broadening it found no new bugs among
+those 81 — worth confirming rather than assuming, given the npm sibling's
+analogous gap did hide a real one.
 
 Detection strategy: SCALING RATIO, not a single absolute-time threshold.
 Several already-fixed, genuinely-safe patterns (bounded quantifiers, linear
@@ -61,8 +69,20 @@ def _walk_py_files(root):
                 yield os.path.join(dirpath, name)
 
 
+# re module functions whose first positional argument is a pattern string.
+# An earlier version of this extractor only matched re.compile(...) — an
+# audit (prompted by finding the analogous gap in the npm sibling's
+# text-scanning extractor) found 81 inline re.search/match/sub/split/etc.
+# calls in src/ that never go through re.compile() at all, entirely
+# invisible to that narrower extractor.
+_RE_FUNCS_WITH_PATTERN_ARG = {
+    "compile", "search", "match", "fullmatch", "sub", "subn", "split", "findall", "finditer",
+}
+
+
 def _extract_patterns():
-    """Statically extract every re.compile(...) call's pattern string,
+    """Statically extract every re.<func>(pattern, ...) call's pattern
+    string (compile/search/match/fullmatch/sub/subn/split/findall/finditer),
     using the AST so multi-line / concatenated string literals resolve
     correctly (a plain regex extractor mis-parsed some of these)."""
     patterns = []
@@ -78,7 +98,7 @@ def _extract_patterns():
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "compile"
+                and node.func.attr in _RE_FUNCS_WITH_PATTERN_ARG
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == "re"
                 and node.args
