@@ -219,10 +219,11 @@ class MCPSecurityGuard:
         {"name": "sd_retry_forever", "type": "resource_drain",
          "pattern": re.compile(r'retry\s+(?:indefinitely|forever|endlessly|infinitely)|loop\s+(?:infinitely|forever|endlessly)|run\s+(?:forever|indefinitely|endlessly)', re.IGNORECASE)},
         # Conversation hijacking — role injection and system prompt override
+        # \s* bounded — unbounded form was quadratic-time ReDoS (parity with npm sibling).
         {"name": "sd_fake_user_turn", "type": "conversation_hijack",
-         "pattern": re.compile(r'\n\s*(?:User|Human)\s*:\s*(?=\S)', re.IGNORECASE)},
+         "pattern": re.compile(r'\n\s{0,20}(?:User|Human)\s{0,5}:\s{0,5}(?=\S)', re.IGNORECASE)},
         {"name": "sd_fake_assistant_turn", "type": "conversation_hijack",
-         "pattern": re.compile(r'\n\s*(?:Assistant|AI|Bot|Claude|GPT)\s*:\s*(?=\S)', re.IGNORECASE)},
+         "pattern": re.compile(r'\n\s{0,20}(?:Assistant|AI|Bot|Claude|GPT)\s{0,5}:\s{0,5}(?=\S)', re.IGNORECASE)},
         {"name": "sd_role_json", "type": "conversation_hijack",
          "pattern": re.compile(r'"role"\s*:\s*"(?:system|user|assistant)"', re.IGNORECASE)},
         {"name": "sd_system_xml", "type": "conversation_hijack",
@@ -958,11 +959,12 @@ class MCPSecurityGuard:
         ("schema_mutation_str", re.compile(r'"admin"\s*:\s*\{[^}]*"default"\s*:\s*true|bypassAuth\s*[=:]\s*true|approved_actions\s*=\s*\["\*"\]|required_params\s*=\s*\[\]|confirm_\w+.*default\s*[=:]\s*false|additional_properties.*exfil', re.I)),
         # MCP server/tool impersonation and shadow-tool naming in description
         ("mcp_tool_shadow", re.compile(r"\bshadow-\w+(?:-mcp|-tool|-server)\b", re.I)),
-        ("mcp_impersonation", re.compile(r"\b[\w-]+-mcp-official(?:-v\d+)?\b|official-v\d+.*\bmcp\b|\bmcp\b.*official-v\d+|\b\w+_mcp_v\d+\b|\b\w+-mcp\s+vs\s+\w+", re.I)),
+        # Bounded — unbounded [\w-]+/.* was quadratic-time ReDoS (parity with npm sibling).
+        ("mcp_impersonation", re.compile(r"\b[\w-]{1,100}-mcp-official(?:-v\d+)?\b|official-v\d+.{0,100}\bmcp\b|\bmcp\b.{0,100}official-v\d+|\b\w+_mcp_v\d+\b|\b\w+-mcp\s+vs\s+\w+", re.I)),
         # Rug-pull v2: post-approval description patch with CC/BCC exfil, session steal
         ("rug_pull_descriptor", re.compile(r"(?:also\s+)?(?:CC|BCC)\s+\S+@\S+|steal\s+session|include\s+session\s+token|silent(?:ly)?\s+exfil|auto-approve.*destructive|enable\s+silent\s+exfil|redirect\s+results\s+to\s+https?://|leak_api_keys|hidden_instruction\s+leak|(?:from\s+now\s+on\s+also\s+)?exfil\s+to\s+\S+\.\S+", re.I)),
         # HTML comment injection carrying SYS/ADMIN directives in tool description
-        ("html_comment_injection", re.compile(r"<!--[^>]*(?:SYS|SYSTEM|ADMIN|OVERRIDE|BCC\s+\S*@|redirect\s+to|steal)[^>]*-->", re.I)),
+        ("html_comment_injection", re.compile(r"<!--[^>]{0,2000}(?:SYS|SYSTEM|ADMIN|OVERRIDE|BCC\s+\S*@|redirect\s+to|steal)[^>]{0,2000}-->", re.I)),
         # Cyrillic homoglyph characters — suspicious in MCP tool descriptions (English context)
         ("homoglyph_cyrillic", re.compile(r"[Ѐ-ӿ]")),
     ]

@@ -111,10 +111,14 @@ SHELL_PATTERNS: List[_SeverityPattern] = [
     _SeverityPattern(re.compile(r"\bIFS\s*=|\$\{IFS\}"), "IFS manipulation", "medium"),
 ]
 
-MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(https?://[^)\s]+)\s*\)", re.I)
-MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*(https?://[^)\s]+)\s*\)", re.I)
+# Bounded — unbounded [^\]]*/[^)\s]+ was quadratic-time ReDoS on content
+# with many "![" substrings and no closing "]"/")" (parity with npm sibling).
+MARKDOWN_IMAGE = re.compile(r"!\[[^\]]{0,2000}\]\(\s{0,50}(https?://[^)\s]{1,1000})\s{0,50}\)", re.I)
+MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]{0,2000}\]\(\s{0,50}(https?://[^)\s]{1,1000})\s{0,50}\)", re.I)
 
-CSV_TRIGGER = re.compile(r"(?:^|[\n\r,;\t])\s*([=+\-@][^\n\r,;\t]{0,200})")
+# Bounded \s* — unbounded form was quadratic-time ReDoS on long newline runs
+# (\s matches \n, every line boundary is a retry point).
+CSV_TRIGGER = re.compile(r"(?:^|[\n\r,;\t])\s{0,50}([=+\-@][^\n\r,;\t]{0,200})")
 CSV_DANGEROUS_FN = re.compile(
     r"\b(?:HYPERLINK|IMPORTXML|IMPORTDATA|IMPORTHTML|IMPORTFEED|IMPORTRANGE|WEBSERVICE|DDE|MSEXCEL)\b"
     r"|cmd\s*\||^\s*=[\w.]+\s*\(",

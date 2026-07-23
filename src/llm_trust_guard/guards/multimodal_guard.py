@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
+from ..decode_variants import build_decode_variants
+
 
 @dataclass
 class MultiModalGuardConfig:
@@ -87,14 +89,22 @@ class MultiModalGuard:
         ("base64_instruction", re.compile(r"execute\s*:\s*[A-Za-z0-9+/=]{20,}", re.IGNORECASE)),
         ("command_injection", re.compile(r";\s*(rm|del|wget|curl|eval|exec)\s", re.IGNORECASE)),
         ("exfiltration_markers", re.compile(r"send\s+(to|this|data)\s+(to\s+)?https?://", re.IGNORECASE)),
-        ("invisible_unicode", re.compile(r"[\u200B-\u200D\uFEFF\u2060-\u206F]")),
+        # ZWNJ/ZWJ (U+200C/200D) deliberately excluded from this single-
+        # occurrence check \u2014 legitimate orthographic characters in Persian,
+        # Arabic-script, and Indic text, not just an attack vector. Abuse at
+        # scale is still caught by the threshold-based
+        # excessive_invisible_characters heuristic (>5) below.
+        ("invisible_unicode", re.compile(r"[\u200B\uFEFF\u2060-\u206F]")),
         ("json_policy_in_metadata", re.compile(r'"(?:role|instructions?|system|policy)"\s*:\s*"', re.IGNORECASE)),
-        ("ini_policy_in_metadata", re.compile(r"^\s*\[(?:system|admin|override|config)\]\s*$", re.IGNORECASE | re.MULTILINE)),
+        # \s* bounded — unbounded form + MULTILINE was quadratic-time ReDoS
+        # (\s matches \n, every line boundary is a retry point).
+        ("ini_policy_in_metadata", re.compile(r"^\s{0,20}\[(?:system|admin|override|config)\]\s{0,20}$", re.IGNORECASE | re.MULTILINE)),
         ("emoji_instruction_sequence", re.compile(r"(?:\U0001F513|\U0001F511|\U0001F6E1\uFE0F|\u2699\uFE0F|\U0001F527|\U0001F6AB|\u274C|\u2705)\s*(?:unlock|admin|override|bypass|disable|enable|grant|allow)", re.IGNORECASE)),
-        ("rebus_instruction_pattern", re.compile(r"(?:[A-Z]{2,}\s*[-=:>\u2192]\s*){3,}")),
+        # Bounded \u2014 unbounded [A-Z]{2,}/\s* was quadratic-time ReDoS.
+        ("rebus_instruction_pattern", re.compile(r"(?:[A-Z]{2,20}\s{0,5}[-=:>\u2192]\s{0,5}){3,}")),
         ("metadata_split_marker", re.compile(r"(?:part|step|fragment)\s*[1-9]\s*(?:of|:)", re.IGNORECASE)),
         # Instruction-void phrases — covers OCR, EXIF, ultrasonic, mind-map, video-frame containers
-        ("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.IGNORECASE)),
+        ("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s{1,5}(?:previous|prior))?\s{0,20}instructions?\s{1,10}(?:are|have\s{1,5}been|is)\s{1,10}(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.IGNORECASE)),
         ("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.IGNORECASE)),
         ("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.IGNORECASE)),
         # Activation / state-override phrases
@@ -232,7 +242,10 @@ class MultiModalGuard:
                 )
                 risk_score += 20
 
-        # Scan extracted text for injections
+        # Scan extracted text for injections — also across de-obfuscated
+        # variants (URL/hex/base64/ROT13/reversed/zero-width-stripped/
+        # homoglyph-normalized), since a raw match alone is trivially
+        # bypassed by wrapping the payload in any of these encodings.
         if content.extracted_text:
             text_result = self._scan_text(content.extracted_text)
             if text_result["injection_found"]:
@@ -240,6 +253,27 @@ class MultiModalGuard:
                 violations.extend(text_result["violations"])
                 injection_patterns_found.extend(text_result["patterns"])
                 risk_score += text_result["risk_contribution"]
+
+            # Only the first variant to surface a given violation name
+            # contributes its risk score — otherwise the same underlying
+            # threat, visible in several decode variants at once, would
+            # inflate risk_score once per variant instead of once per
+            # distinct threat. Seeded from the raw-text scan's OWN
+            # violations only (not the broader `violations` list, which may
+            # also hold unrelated MIME-type/metadata violations by this
+            # point) so an unrelated violation can never suppress a real
+            # text-injection score just by sharing a name.
+            already_flagged = set(text_result["violations"])
+            for target in build_decode_variants(content.extracted_text):
+                decoded_result = self._scan_text(target, raw_heuristics=False)
+                if decoded_result["injection_found"]:
+                    hidden_content_detected = True
+                    new_violations = [v for v in decoded_result["violations"] if v not in already_flagged]
+                    already_flagged.update(new_violations)
+                    violations.extend(decoded_result["violations"])
+                    injection_patterns_found.extend(decoded_result["patterns"])
+                    for v in new_violations:
+                        risk_score += decoded_result["contribution_by_violation"].get(v, 0)
 
         # Detect base64 payloads in content
         if self._detect_base64_payloads and content.content:
@@ -252,7 +286,7 @@ class MultiModalGuard:
                 for payload in base64_result["payloads"]:
                     try:
                         decoded = base64.b64decode(payload).decode("utf-8")
-                        decoded_scan = self._scan_text(decoded)
+                        decoded_scan = self._scan_text(decoded, raw_heuristics=False)
                         if decoded_scan["injection_found"]:
                             hidden_content_detected = True
                             violations.append("base64_injection_payload")
@@ -289,26 +323,31 @@ class MultiModalGuard:
                 injection_patterns_found.append(f"Custom: {pattern.pattern[:30]}")
                 risk_score += 20
 
-        blocked = risk_score >= 50 or len(violations) > 0
+        # Deduplicate — scanning multiple decode variants can surface the
+        # same named violation/pattern more than once for one underlying threat.
+        unique_violations = list(dict.fromkeys(violations))
+        unique_patterns = list(dict.fromkeys(injection_patterns_found))
+
+        blocked = risk_score >= 50 or len(unique_violations) > 0
 
         return MultiModalGuardResult(
             allowed=not blocked,
             reason=(
-                f"Multi-modal content blocked: {', '.join(violations[:3])}"
+                f"Multi-modal content blocked: {', '.join(unique_violations[:3])}"
                 if blocked
                 else "Multi-modal content passed security checks"
             ),
-            violations=violations,
+            violations=unique_violations,
             request_id=req_id,
             content_analysis=ContentAnalysis(
                 type=content.type,
                 threats_detected=threats_detected,
                 metadata_suspicious=metadata_suspicious,
                 hidden_content_detected=hidden_content_detected,
-                injection_patterns_found=injection_patterns_found,
+                injection_patterns_found=unique_patterns,
                 risk_score=min(100, risk_score),
             ),
-            recommendations=self._generate_recommendations(violations),
+            recommendations=self._generate_recommendations(unique_violations),
         )
 
     def check_batch(
@@ -422,35 +461,53 @@ class MultiModalGuard:
             "risk_contribution": min(60, risk_contribution),
         }
 
-    def _scan_text(self, text: str) -> Dict[str, Any]:
+    def _scan_text(self, text: str, raw_heuristics: bool = True) -> Dict[str, Any]:
+        """
+        raw_heuristics: whether to run the invisible-character-count and
+        intra-token-homoglyph-mixing heuristics, which look for anomalies
+        introduced by an attacker in the ORIGINAL text. Must be False when
+        scanning an already-decoded/normalized variant: partial homoglyph
+        normalization (only the small set of commonly-spoofed letters)
+        applied to genuinely non-English text (e.g. a plain Cyrillic
+        sentence) creates artificial intra-token script mixing that isn't
+        an attack, and would otherwise false-positive on legitimate
+        non-English content.
+        """
         violations: List[str] = []
         patterns: List[str] = []
+        contribution_by_violation: Dict[str, int] = {}
         risk_contribution = 0
 
         for name, pattern in self.INJECTION_PATTERNS:
             if pattern.search(text):
-                violations.append(f"text_injection_{name}")
+                violation_name = f"text_injection_{name}"
+                violations.append(violation_name)
                 patterns.append(name)
+                contribution_by_violation[violation_name] = 25
                 risk_contribution += 25
 
-        invisible_count = len(re.findall(r"[\u200B-\u200D\uFEFF\u2060-\u206F]", text))
-        if invisible_count > 5:
-            violations.append("excessive_invisible_characters")
-            patterns.append(f"invisible_unicode({invisible_count})")
-            risk_contribution += 20
+        if raw_heuristics:
+            invisible_count = len(re.findall(r"[\u200B-\u200D\uFEFF\u2060-\u206F]", text))
+            if invisible_count > 5:
+                violations.append("excessive_invisible_characters")
+                patterns.append(f"invisible_unicode({invisible_count})")
+                contribution_by_violation["excessive_invisible_characters"] = 20
+                risk_contribution += 20
 
-        # Require intra-token script mixing (Cyrillic adjacent to Latin within a word).
-        # "\u0430dmin" \u2192 attack. "\u041A\u0430\u043A \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C chroot?" \u2192 benign bilingual text.
-        if re.search(r"[a-zA-Z][\u0430-\u044F\u0410-\u042F]|[\u0430-\u044F\u0410-\u042F][a-zA-Z]", text):
-            violations.append("potential_homoglyph_attack")
-            patterns.append("mixed_scripts")
-            risk_contribution += 15
+            # Require intra-token script mixing (Cyrillic adjacent to Latin within a word).
+            # "\u0430dmin" \u2192 attack. "\u041A\u0430\u043A \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C chroot?" \u2192 benign bilingual text.
+            if re.search(r"[a-zA-Z][\u0430-\u044F\u0410-\u042F]|[\u0430-\u044F\u0410-\u042F][a-zA-Z]", text):
+                violations.append("potential_homoglyph_attack")
+                patterns.append("mixed_scripts")
+                contribution_by_violation["potential_homoglyph_attack"] = 15
+                risk_contribution += 15
 
         return {
             "injection_found": len(violations) > 0,
             "violations": violations,
             "patterns": patterns,
             "risk_contribution": min(60, risk_contribution),
+            "contribution_by_violation": contribution_by_violation,
         }
 
     def _detect_base64_payloads_in(self, content: str) -> Dict[str, Any]:

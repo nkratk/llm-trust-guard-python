@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+Parity with the npm sibling's decode/normalize fix batch (#7, #9, #10, #11) — found via the same full-history bisection sweep (see `specs/001-guard-adversarial-hardening/tasks.md` Phase 5).
+
+- **`InputSanitizer`**: `dan_jailbreak` pattern now also matches "DAN persona"/"DAN character" phrasing. Closes #7.
+- **New shared `src/llm_trust_guard/decode_variants.py`** (parity with npm's `src/decode-variants.ts`): `InputSanitizer`, `ExternalDataGuard`, and `MultiModalGuard` previously matched their patterns against raw input only. All three now also re-scan de-obfuscated variants (URL/hex/base64/ROT13/reversed/zero-width-stripped/homoglyph-normalized, chained up to depth 3) before deciding allow/block.
+  - `ExternalDataGuard`: 33/34 previously-undetected SSRF/XXE/zip-slip/markdown-exfil/gopher-smuggle threats now caught (parity with npm's #21 fix). Closes #9.
+  - `MultiModalGuard`: 20/30 previously-undetected CometJacking-family threats now caught via decode (parity with npm's #22 fix); the other 10 remain a genuine missing-signature gap, tracked in #10.
+  - `InputSanitizer`: parity with npm's #23 decode-gap subset.
+
+### Fixed (found during adversarial review of the above, not part of the original scope)
+
+- **ReDoS (25 patterns, 8 files)**: parity with the npm sibling's ReDoS fix. Ran the same empirical stress-test sweep (814 patterns extracted from every guard, tested against 28 adversarial seeds with a 2s per-test alarm timeout as a safety net) against this repo's own guards — confirmed 19 direct timeouts plus 6 slow patterns pre-fix (not assumed identical to npm), all fixed by bounding the same previously-unbounded quantifiers. `ExternalDataGuard`, `InputSanitizer`, `MultiModalGuard`, `ToolResultGuard`, `OutputGuard`, `RAGGuard`, `AgentSkillGuard`, `MCPSecurityGuard` affected.
+- **Bypass**: `build_decode_variants()`'s input cap (20,000 chars) sat below `ExternalDataGuard`'s own default `max_content_length` (50,000) — content between those two thresholds was neither decoded nor rejected for size, a real silent bypass (confirmed with a base64-encoded SSRF payload placed past the old cap in an otherwise-realistic ~45KB document). Raised to 65,000 — deliberately lower than the npm sibling's 100,000, since `InputSanitizer`'s 170+ patterns cost ~770ms worst-case at npm's value on CPython's slower regex engine vs. npm's ~30ms; 65,000 keeps worst-case latency around 300ms while still closing the same bypass. Found by independent final-review adversarial verification before merge.
+- **False positive**: partial homoglyph normalization applied to genuinely non-English text created artificial script mixing, false-flagging legitimate Cyrillic/Persian content in `MultiModalGuard`. Fixed by gating the raw-text-only heuristics to never run against decode variants, and narrowing the unconditional ZWNJ/ZWJ check the same way as the npm fix (legitimate in Persian/Arabic-script/Indic text).
+- **Inflated risk score**: `MultiModalGuard.check()` could double-count a violation's risk contribution across decode variants. Fixed with per-violation contribution tracking; `violations`/`injection_patterns_found` also deduplicated in the final result.
+
 ## 0.21.3 (2026-07-19)
 
 ### Fixed

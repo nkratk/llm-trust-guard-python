@@ -76,7 +76,8 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     _InjectionPattern("bypass_safety", re.compile(r"bypass\s+(?:security|safety|filters|restrictions)", re.I), "high"),
     _InjectionPattern("data_exfiltration", re.compile(r"send\s+(?:this|the|all)\s+(?:data|info)\s+to|exfiltrate", re.I), "critical"),
     _InjectionPattern("hidden_instruction", re.compile(r"HIDDEN_PROMPT|HIDDEN_INSTRUCTION|INVISIBLE_TEXT", re.I), "critical"),
-    _InjectionPattern("markdown_injection", re.compile(r"!\[.*\]\(https?://[^)]*\?.*(?:token|key|secret|auth)", re.I), "high"),
+    # Bounded — same ReDoS shape as external_data_guard.py's markdown_image_exfil.
+    _InjectionPattern("markdown_injection", re.compile(r"!\[.{0,2000}\]\(https?://[^)]{0,1000}\?.{0,500}(?:token|key|secret|auth)", re.I), "high"),
     # Exfiltration via URL in tool results instructing the LLM
     _InjectionPattern("url_exfiltration", re.compile(r"(?:fetch|request|call|post|get|send|forward|transmit|relay)\s+(?:to|from)?\s*https?://", re.I), "critical"),
     _InjectionPattern("url_data_leak", re.compile(r"https?://[^\s]+\?.*(?:data|prompt|conversation|history|context|message|response)=", re.I), "critical"),
@@ -108,13 +109,13 @@ _RESULT_INJECTION_PATTERNS: List[_InjectionPattern] = [
     # @AI-agent hijack via issue/PR/comment tool result
     _InjectionPattern("ai_agent_hijack", re.compile(r"@(?:copilot|claude|assistant|gpt|gemini|bot|agent)\s+(?:please\s+)?(?:run|execute|create|delete|send|update|remove|drop|fetch|post|get)\b", re.I), "critical"),
     # Markdown exfil using URL-encoded path separators (%2F=/, %5C=\)
-    _InjectionPattern("markdown_injection_urlenc", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)]*%(?:2[Ff]|5[Cc])", re.I), "high"),
+    _InjectionPattern("markdown_injection_urlenc", re.compile(r"!\[.{0,2000}?\]\(https?://[^)]{1,1000}\?[^)]{0,500}=[^)]{0,500}%(?:2[Ff]|5[Cc])", re.I), "high"),
     # JSON hidden agent directive keys (_system, _directive, etc.)
     _InjectionPattern("json_system_key", re.compile(r'"_(?:system|directive|instruction|prompt|admin|command)"\s*:', re.I), "critical"),
     # LangChain response_metadata serialization markers
     _InjectionPattern("langchain_response_metadata", re.compile(r"response_metadata\.lc\s*=\s*[12]\b|\bkwargs\s*=\s*\{[^}]*exec\s*:\s*true", re.I), "critical"),
     # Passive instruction-void forms (appear in prompt-injection-echo via tool separators)
-    _InjectionPattern("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.I), "critical"),
+    _InjectionPattern("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s{1,5}(?:previous|prior))?\s{0,20}instructions?\s{1,10}(?:are|have\s{1,5}been|is)\s{1,10}(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.I), "critical"),
     _InjectionPattern("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.I), "critical"),
     _InjectionPattern("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.I), "critical"),
 ]

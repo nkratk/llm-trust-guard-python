@@ -27,6 +27,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ..decode_variants import build_decode_variants
+
 LoggerFn = Optional[Callable[[str, str], None]]
 
 
@@ -85,11 +87,14 @@ INJECTION_PATTERNS: List[_Pattern] = [
     _Pattern("hidden_instruction", re.compile(r"HIDDEN_PROMPT|HIDDEN_INSTRUCTION|INVISIBLE_TEXT", re.I)),
     _Pattern("jailbreak", re.compile(r"jailbreak|DAN\s*mode|developer\s+mode|unrestricted\s+mode", re.I)),
     _Pattern("bypass_safety", re.compile(r"bypass\s+(?:security|safety|filters|restrictions|guardrails)", re.I)),
-    _Pattern("instruction_delimiter", re.compile(r"={3,}\s*(?:SYSTEM|INSTRUCTIONS?|BEGIN)\s*={3,}", re.I)),
+    # Bounded — unbounded ={3,}/\s* was severely quadratic-time ReDoS on long
+    # runs of "=" with no SYSTEM/INSTRUCTIONS/BEGIN literal (parity with npm sibling).
+    _Pattern("instruction_delimiter", re.compile(r"={3,20}\s{0,10}(?:SYSTEM|INSTRUCTIONS?|BEGIN)\s{0,10}={3,20}", re.I)),
     _Pattern("prompt_leak_request", re.compile(r"(?:print|show|reveal|output)\s+(?:your|the|system)\s+(?:prompt|instructions)", re.I)),
     _Pattern("base64_injection", re.compile(r"(?:decode|eval|execute)\s+(?:the\s+)?(?:following\s+)?base64", re.I)),
     # Passive instruction-void forms (CSS-hidden, HTML-attr, and plain text injections)
-    _Pattern("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s+(?:previous|prior))?\s*instructions?\s+(?:are|have\s+been|is)\s+(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.I)),
+    # Whitespace quantifiers bounded — same ReDoS shape as instruction_delimiter above.
+    _Pattern("instructions_void", re.compile(r"(?:your|the|previous|prior|all\s{1,5}(?:previous|prior))?\s{0,20}instructions?\s{1,10}(?:are|have\s{1,5}been|is)\s{1,10}(?:void|cancelled?|overridden?|revoked|rescinded|superseded)", re.I)),
     _Pattern("forget_instructions", re.compile(r"forget\s+(?:your|all|the|my|these|every|each)\s*(?:previous\s+|prior\s+)?(?:instructions?|rules?|guidelines?|directives?|prompts?)", re.I)),
     _Pattern("disregard_directives", re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above|your)?\s*(?:instructions?|rules?|directives?|guidelines?|prompts?)", re.I)),
     # Structured document injection (RAG/file/email pipelines)
@@ -121,11 +126,13 @@ SECRET_PATTERNS: List[_Pattern] = [
 
 EXFILTRATION_PATTERNS: List[_Pattern] = [
     # Named-key exfil: markdown image URL whose query param key hints at data smuggling
-    _Pattern("markdown_image_exfil", re.compile(r"!\[.*?\]\(https?://[^)]*\?[^)]*(?:token|key|secret|data|q|payload|p|prompt|ctx|context|info|msg|body|session|conv)=", re.I)),
+    # Bounds widened to 2000/1000/500 after review found a tighter first pass
+    # would itself create a detection gap for long alt-text — stays fast (parity with npm sibling).
+    _Pattern("markdown_image_exfil", re.compile(r"!\[.{0,2000}?\]\(https?://[^)]{0,1000}\?[^)]{0,500}(?:token|key|secret|data|q|payload|p|prompt|ctx|context|info|msg|body|session|conv)=", re.I)),
     # "Reprompt"-style exfil (CVE-2026-24307): markdown image with any long query-param value (>=30 chars).
-    _Pattern("markdown_image_exfil_long_value", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)&]{30,}")),
+    _Pattern("markdown_image_exfil_long_value", re.compile(r"!\[.{0,2000}?\]\(https?://[^)]{1,1000}\?[^)]{0,500}=[^)&]{30,}")),
     # Markdown exfil using URL-encoded path separators (%2F=/, %5C=\) in query values
-    _Pattern("markdown_image_exfil_urlenc", re.compile(r"!\[.*?\]\(https?://[^)]+\?[^)]*=[^)]*%(?:2[Ff]|5[Cc])", re.I)),
+    _Pattern("markdown_image_exfil_urlenc", re.compile(r"!\[.{0,2000}?\]\(https?://[^)]{1,1000}\?[^)]{0,500}=[^)]{0,500}%(?:2[Ff]|5[Cc])", re.I)),
     _Pattern("tracking_pixel", re.compile(r"<img[^>]+src=[\"']https?://[^\"']*\?[^\"']*[\"'][^>]*(?:width|height)\s*=\s*[\"']?[01]px", re.I)),
     _Pattern("encoded_url_exfil", re.compile(r"https?://[^\s]*(?:callback|webhook|exfil|collect)[^\s]*\?[^\s]*(?:data|payload|d)=", re.I)),
     _Pattern("data_send_instruction", re.compile(r"send\s+(?:this|the|all)\s+(?:data|information|content|context)\s+to", re.I)),
@@ -149,7 +156,10 @@ SSRF_PATTERNS: List[_Pattern] = [
 PII_PATTERNS: List[_Pattern] = [
     _Pattern("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
     _Pattern("credit_card", re.compile(r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b")),
-    _Pattern("email_address", re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Z]{2,}\b", re.I)),
+    # Bounded local-part/label/TLD lengths and a label-grouped domain — same
+    # ReDoS fix as the npm sibling's matching pattern (10s+ on an 80KB
+    # string with no valid email in it).
+    _Pattern("email_address", re.compile(r"\b[A-Za-z0-9._%+\-]{1,64}@(?:[A-Za-z0-9\-]{1,63}\.){1,8}[A-Za-z]{2,24}\b", re.I)),
 ]
 
 
@@ -213,36 +223,46 @@ class ExternalDataGuard:
                 violations.append("STALE_DATA")
                 threats.append("data_expired")
 
+        # Content checks 5-8 also scan de-obfuscated variants (URL/hex/
+        # base64/ROT13/reversed/homoglyph-normalized) — a raw pattern match
+        # alone is trivially bypassed by wrapping the payload in any of
+        # these encodings.
+        scan_targets = [content_str] + build_decode_variants(content_str)
+
         # 5. Content injection detection
         if self.config.scan_for_injection:
-            for p in INJECTION_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("INJECTION_DETECTED")
-                    threats.append(f"injection:{p.name}")
+            for target in scan_targets:
+                for p in INJECTION_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("INJECTION_DETECTED")
+                        threats.append(f"injection:{p.name}")
 
         # 6. Secret / credential detection
         if self.config.scan_for_secrets:
-            for p in SECRET_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("SECRET_DETECTED")
-                    threats.append(f"secret:{p.name}")
-            for p in PII_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("PII_DETECTED")
-                    threats.append(f"pii:{p.name}")
+            for target in scan_targets:
+                for p in SECRET_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("SECRET_DETECTED")
+                        threats.append(f"secret:{p.name}")
+                for p in PII_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("PII_DETECTED")
+                        threats.append(f"pii:{p.name}")
 
         # 7. Data exfiltration URL detection
         if self.config.scan_for_exfiltration:
-            for p in EXFILTRATION_PATTERNS:
-                if p.pattern.search(content_str):
-                    violations.append("EXFILTRATION_ATTEMPT")
-                    threats.append(f"exfil:{p.name}")
+            for target in scan_targets:
+                for p in EXFILTRATION_PATTERNS:
+                    if p.pattern.search(target):
+                        violations.append("EXFILTRATION_ATTEMPT")
+                        threats.append(f"exfil:{p.name}")
 
         # 8. SSRF detection — private IPs, cloud metadata, dangerous schemes
-        for p in SSRF_PATTERNS:
-            if p.pattern.search(content_str):
-                violations.append("SSRF_ATTEMPT")
-                threats.append(f"ssrf:{p.name}")
+        for target in scan_targets:
+            for p in SSRF_PATTERNS:
+                if p.pattern.search(target):
+                    violations.append("SSRF_ATTEMPT")
+                    threats.append(f"ssrf:{p.name}")
 
         # Deduplicate
         unique_violations = list(dict.fromkeys(violations))
