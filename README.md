@@ -265,7 +265,7 @@ WildChat filters toxic content but not prompt-injection intent. Canonical-marker
 
 For higher detection on adversarial corpora, plug in an ML classifier via the [DetectionClassifier interface](#pluggable-detection).
 
-**Fixed since v0.21.5 (unreleased):** `ExternalDataGuard`'s `role_override` no longer false-positives on ordinary "act as a/an X" business language (parity port of npm's fix, #7); `OutputFilter`'s `ip_address` is now octet-bounded and no longer false-positives on version strings like "10.4.32.3" preceded by a version-indicating keyword (#10, also a parity port).
+**Fixed in v0.21.6:** `ExternalDataGuard`'s `role_override` no longer false-positives on ordinary "act as a/an X" business language (parity port of npm's fix, #7); `OutputFilter`'s `ip_address` is now octet-bounded and no longer false-positives on version strings like "10.4.32.3" preceded by a version-indicating keyword, in the same clause (#10, also a parity port) — see [RESULTS-v0.21.6.md](tests/adversarial/RESULTS-v0.21.6.md).
 
 ### Security: automated ReDoS regression testing
 
