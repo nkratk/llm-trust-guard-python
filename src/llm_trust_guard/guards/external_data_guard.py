@@ -83,7 +83,16 @@ INJECTION_PATTERNS: List[_Pattern] = [
     _Pattern("system_tag", re.compile(r"</?system>|</?admin>|\[system\]|\[admin\]", re.I)),
     _Pattern("ignore_instructions", re.compile(r"ignore\s+(?:all\s+)?(?:previous|prior|above|your)\s+(?:instructions|rules|prompts?)", re.I)),
     _Pattern("new_instructions", re.compile(r"new\s+instructions?\s*:", re.I)),
-    _Pattern("role_override", re.compile(r"you\s+are\s+now|from\s+now\s+on|act\s+as\s+(?:a|an)\s", re.I)),
+    # "act as a/an X" only counts as a role-override attempt when X is an
+    # authority/system-impersonation noun (admin, root, system, ...) — bare
+    # "we act as an intermediary"-style business language uses the same
+    # phrase with an ordinary noun and must not be flagged. Parity port of
+    # npm's external-data-guard.ts (commit 0f3e868, survived independent
+    # adversarial review — that review dropped "developer"/"moderator"/
+    # "system" from an earlier draft of this list for being too generic,
+    # matching "act as a developer advocate"/"act as a moderator for the
+    # panel"; this port uses the post-review, safe list).
+    _Pattern("role_override", re.compile(r"you\s+are\s+now|from\s+now\s+on|act\s+as\s+(?:a|an)\s+(?:admin|administrator|root|superuser|sudo|unrestricted|jailbroken|dan)\b", re.I)),
     _Pattern("hidden_instruction", re.compile(r"HIDDEN_PROMPT|HIDDEN_INSTRUCTION|INVISIBLE_TEXT", re.I)),
     _Pattern("jailbreak", re.compile(r"jailbreak|DAN\s*mode|developer\s+mode|unrestricted\s+mode", re.I)),
     _Pattern("bypass_safety", re.compile(r"bypass\s+(?:security|safety|filters|restrictions|guardrails)", re.I)),

@@ -265,6 +265,8 @@ WildChat filters toxic content but not prompt-injection intent. Canonical-marker
 
 For higher detection on adversarial corpora, plug in an ML classifier via the [DetectionClassifier interface](#pluggable-detection).
 
+**Fixed since v0.21.5 (unreleased):** `ExternalDataGuard`'s `role_override` no longer false-positives on ordinary "act as a/an X" business language (parity port of npm's fix, #7); `OutputFilter`'s `ip_address` is now octet-bounded and no longer false-positives on version strings like "10.4.32.3" preceded by a version-indicating keyword (#10, also a parity port).
+
 ### Security: automated ReDoS regression testing
 
 Catastrophic-backtracking regexes were previously only caught by one-off manual stress-test sweeps. `tests/test_redos_safety.py` now extracts regex patterns under `src/` via AST parsing — both `re.<func>(pattern, ...)` calls and `pattern=` keyword-argument dataclass fields — and stress-tests each against a fixed adversarial seed corpus at two scaling sizes, flagging any pattern whose runtime grows super-linearly — this is a permanent, automated check (part of the standard test suite, enforced by CI and the pre-push hook) rather than a one-off manual sweep. Writing it (and broadening it, after independent review) found three real cases: `heuristic_analyzer.py`'s `_QA_PATTERN`, `encoding_detector.py`'s `template_injection`, and `output_filter.py`'s `email` PII pattern (a parity gap — the npm sibling already had this exact fix). v0.21.5 also fixes a real many-shot-detection bypass an earlier ReDoS bound introduced — see [RESULTS-v0.21.5.md](tests/adversarial/RESULTS-v0.21.5.md).

@@ -106,8 +106,17 @@ DEFAULT_PII_PATTERNS: List[PIIPattern] = [
         mask_as="[CREDIT_CARD]",
     ),
     PIIPattern(
+        # Octet-bounded (0-255) — parity port of npm's output-filter.ts fix,
+        # closes #10's "safe, uncontroversial minimum" portion. The deeper
+        # version-string ambiguity (every octet valid, e.g. "10.4.32.3" —
+        # structurally identical to a real IPv4 address by shape alone) is
+        # handled separately in filter()/_mask_pii_in_string() via
+        # _is_version_context(), since Python's re module has no
+        # variable-length lookbehind (unlike npm's regex, which embeds the
+        # equivalent check directly in the pattern) — see that function's
+        # docstring for why this needs special-casing here instead.
         name="ip_address",
-        pattern=r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        pattern=r"\b(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}\b",
         mask_as="[IP_ADDRESS]",
     ),
     PIIPattern(
@@ -366,13 +375,45 @@ class OutputFilter:
         # Detect PII (scan original + de-obfuscated variants)
         if self.detect_pii:
             pii_scan_targets = [output_str] + self._build_scan_variants(output_str)
+            # Only the REVERSED variant defeats ip_address's version-string
+            # exclusion (a version keyword like "release" scrambles to
+            # "esaeler" and no longer matches, while the digit-and-dot IP
+            # shape survives, just reordered) — none of the other transforms
+            # (hex/base64/URL-decode, ZWSP-strip, Cyrillic-normalize) reorder
+            # text, so none of them could have produced that specific false
+            # positive. An earlier version of this fix skipped ip_address for
+            # EVERY scan variant — independent review found that also
+            # silently disabled real-IP detection in base64/hex-obfuscated
+            # output (a genuine exfiltration-detection gap, not just an
+            # over-broad false-positive fix), and pointed out the code
+            # comment's claim of "parity with npm" was actually wrong: npm's
+            # own fix only ever excluded the specific reversed variant.
+            # Recomputed here (matching _build_scan_variants' `text[::-1]`)
+            # so only that one problematic variant is excluded.
+            reversed_output_str = output_str[::-1]
             detected_pii: set = set()
             for target in pii_scan_targets:
                 for pii_pat in self.pii_patterns:
                     if pii_pat.name in detected_pii:
                         continue
                     regex = re.compile(pii_pat.pattern, pii_pat.flags)
-                    matches = regex.findall(target)
+                    if pii_pat.name == "ip_address":
+                        # Needs match *position* for the version-context
+                        # exclusion (see _is_version_context), which
+                        # findall() can't provide — use finditer() and
+                        # derive both the match list and locations from the
+                        # same filtered set.
+                        if target == reversed_output_str and target != output_str:
+                            continue
+                        match_objs = [
+                            m for m in regex.finditer(target)
+                            if not self._is_version_context(target, m.start())
+                        ]
+                        matches = [m.group(0) for m in match_objs]
+                        locations = [f"index:{m.start()}" for m in match_objs]
+                    else:
+                        matches = regex.findall(target)
+                        locations = self._find_locations(target, regex)
                     if matches:
                         detected_pii.add(pii_pat.name)
                         pii_detections.append(
@@ -380,7 +421,7 @@ class OutputFilter:
                                 type=pii_pat.name,
                                 count=len(matches),
                                 masked=True,
-                                locations=self._find_locations(target, regex),
+                                locations=locations,
                             )
                         )
                         violations.append(f"PII_DETECTED_{pii_pat.name.upper()}")
@@ -423,7 +464,13 @@ class OutputFilter:
             for pii_pat in self.pii_patterns:
                 regex = re.compile(pii_pat.pattern, pii_pat.flags)
                 replacement = pii_pat.mask_as or self._generate_mask(8)
-                filtered_output = regex.sub(replacement, filtered_output)
+                if pii_pat.name == "ip_address":
+                    filtered_output = regex.sub(
+                        lambda m, _r=replacement, _s=filtered_output: m.group(0) if self._is_version_context(_s, m.start()) else _r,
+                        filtered_output,
+                    )
+                else:
+                    filtered_output = regex.sub(replacement, filtered_output)
         elif isinstance(filtered_output, dict) or isinstance(filtered_output, list):
             filtered_output = self._filter_object(
                 filtered_output, role, filtered_fields, pii_detections
@@ -582,8 +629,58 @@ class OutputFilter:
         for pii_pat in self.pii_patterns:
             regex = re.compile(pii_pat.pattern, pii_pat.flags)
             replacement = pii_pat.mask_as or self._generate_mask(8)
-            result = regex.sub(replacement, result)
+            if pii_pat.name == "ip_address":
+                result = regex.sub(
+                    lambda m, _r=replacement, _s=result: m.group(0) if self._is_version_context(_s, m.start()) else _r,
+                    result,
+                )
+            else:
+                result = regex.sub(replacement, result)
         return result
+
+    # Requires the gap between the keyword and the end of the window (i.e.
+    # the ip_address match start) to consist ONLY of letters and horizontal
+    # whitespace — no digits, no newline, no punctuation of any kind. This
+    # mirrors npm's negative lookbehind (`[a-zA-Z \t]{0,15}`) exactly,
+    # anchored with `$` against a bounded trailing window instead of
+    # embedded in the regex, since Python's re module only supports
+    # FIXED-width lookbehind and the keyword alternatives here have
+    # different lengths (confirmed via direct test: `re.error: look-behind
+    # requires fixed-width pattern`).
+    #
+    # An earlier version of this check used a denylist of specific
+    # "clause-break" characters (":;.,") instead of an allowlist of what's
+    # permitted — two rounds of independent review found real IPs silently
+    # left undetected *and unmasked* through gaps in that denylist: no
+    # digit or newline exclusion at all (`"release\nConnect at
+    # 10.4.32.3"`, `"release 12345 at 10.4.32.3"` both leaked), and every
+    # OTHER punctuation mark not in ":;.," (`!?()[]—-` etc.) still treated
+    # as "same clause". An allowlist of letters + horizontal whitespace is
+    # robust against any punctuation/digit/newline, not just the specific
+    # ones a prior regression happened to find.
+    _IP_VERSION_CONTEXT_RE = re.compile(r"\b(?:version|release|upgrade|update)\b[a-zA-Z \t]{0,15}$", re.I)
+    _IP_VERSION_CONTEXT_WINDOW = 25
+
+    @staticmethod
+    def _is_version_context(text: str, start: int) -> bool:
+        """True if a version-indicating keyword (version/release/upgrade/
+        update) qualifies the ip_address match starting at `start`, in the
+        same clause — see _IP_VERSION_CONTEXT_RE's comment for the exact
+        rule and its history. Used to suppress ip_address false positives
+        on version-number strings whose every octet happens to be a valid
+        IPv4 component (e.g. "10.4.32.3", structurally identical to a real
+        IP by shape alone) — see the ip_address PIIPattern's comment. A
+        bare "v" prefix (e.g. "v10.4.32.3") needs no special handling here
+        — the ip_address pattern's own leading \\b already excludes it,
+        since a digit immediately preceded by a letter is word-to-word (no
+        boundary) either way; confirmed empirically, not just assumed.
+
+        Searches a bounded, fixed-size trailing window of `text` (not the
+        full preceding text), so this stays fast regardless of overall
+        input size — verified at sub-millisecond on a 1M-char input.
+        """
+        window = text[max(0, start - OutputFilter._IP_VERSION_CONTEXT_WINDOW):start]
+        return bool(OutputFilter._IP_VERSION_CONTEXT_RE.search(window))
 
     def _generate_mask(self, length: int) -> str:
         if self.preserve_length:
