@@ -168,6 +168,41 @@ class TestIpAddressVersionStringFalsePositive:
         r = self.filter.filter(b64_email)
         assert any(p.type == "email" for p in r.pii_detected)
 
+    def test_does_not_suppress_a_real_ip_across_any_clause_break_not_just_colon_semicolon_period_comma(self):
+        # A second round of independent review found the earlier clause-break
+        # denylist (":;.,") still missed digits, newlines, and every other
+        # punctuation mark (!?()[]--- etc.) -- all still silently left a real
+        # IP undetected AND unmasked. Replaced with an allowlist (letters +
+        # horizontal whitespace only) that's robust against any of these,
+        # not just the ones a prior regression happened to find.
+        assert self._is_ip_detected("Release! Connect to 10.4.32.3 now") is True
+        assert self._is_ip_detected("release? 10.4.32.3") is True
+        assert self._is_ip_detected("release (a) 10.4.32.3") is True
+        assert self._is_ip_detected("release [x] 10.4.32.3") is True
+        assert self._is_ip_detected("release — 10.4.32.3") is True
+        assert self._is_ip_detected("release - 10.4.32.3") is True
+        assert self._is_ip_detected("release\nConnect at 10.4.32.3 today") is True
+        assert self._is_ip_detected("release 12345 at 10.4.32.3") is True
+        r = self.filter.filter("Release! Connect to 10.4.32.3 now")
+        assert r.filtered_response == "Release! Connect to [IP_ADDRESS] now"
+
+    def test_still_detects_a_real_ip_obfuscated_via_base64_hex_not_just_the_reversed_string_variant(self):
+        # A second round of independent review found the fix for the
+        # reversed-string regression (skipping ip_address for EVERY scan
+        # variant) also silently disabled detection of a real IP hidden via
+        # base64 or hex encoding -- a genuine exfiltration-detection gap,
+        # not just an over-broad false-positive fix. The code comment
+        # claiming this was "the same tradeoff the npm sibling makes" was
+        # itself wrong -- npm's actual fix only ever excluded the specific
+        # reversed variant. Only that one variant actually causes the false
+        # positive (it's the only transform that reorders text), so only
+        # that one is excluded now.
+        import base64
+        b64 = base64.b64encode(b"Connect to 10.0.0.99 now").decode()
+        assert self._is_ip_detected(b64) is True
+        hex_str = "Connect to 10.0.0.99 now".encode().hex()
+        assert self._is_ip_detected(hex_str) is True
+
 
 class TestRoleBasedFiltering:
     def test_should_apply_role_specific_field_filters(self):
